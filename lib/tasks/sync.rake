@@ -1,10 +1,22 @@
 # plugins/redmine_freee/lib/tasks/sync.rake
 require "active_support/number_helper"
 
+# ===== ステータスID共通取得 =====
+def freee_status_ids
+  {
+    estimate: IssueStatus.find_by(name: "見積発行")&.id,
+    invoice:  IssueStatus.find_by(name: "請求中")&.id,
+    paid:     IssueStatus.find_by(name: "入金済")&.id
+  }
+end
+
 namespace :freee do
+  # =========================================================
+  # DRY-RUN
+  # =========================================================
   desc 'freee請求書の入金状況を Redmine Issue に反映（DRY-RUN）'
-  task dry_run_match: :environment do
-    puts '[freee] Start DRY-RUN invoice matching...'
+  task dry_run: :environment do
+    puts '[freee] Start DRY-RUN invoice/quotation matching...'
 
     begin
       companies = FreeeApiClient.companies
@@ -12,57 +24,51 @@ namespace :freee do
       companies.each do |comp|
         company_id = comp["id"]
 
+        # === 見積 ===
         begin
-          invoices = FreeeApiClient.get("/iv/invoices",
-                                        company_id: company_id,
-                                        payment_status: "settled"
-                                       )
+          quotations = FreeeApiClient.get("/iv/quotations", company_id: company_id)
         rescue OAuth2::Error => e
-          puts "[freee][SKIP] company_id=#{company_id} は権限なし → スキップ (#{e.message})"
-          next
+          puts "[freee][SKIP quotation] company_id=#{company_id} 権限なし (#{e.message})"
+          quotations = {}
         end
 
-        list = invoices["invoices"] || []
+        (quotations["quotations"] || []).each do |q|
+          number = q["quotation_number"]
+          status = q["sending_status"]
 
-        puts "[freee] Invoices count: #{list.size}"
-
-        list.each do |inv|
-          invoice_number = inv['invoice_number']              # "#6541"
-          partner_name   = inv['partner_name']
-          amount         = inv['amount_including_tax']
-          status         = inv['payment_status']              # "settled" / "unsettled"
-
-          # --- freee invoice_number → チケット番号変換 ---
-          next unless invoice_number.to_s =~ /^#?(\d+)$/
+          next unless number.to_s =~ /^#?(\d+)$/
           issue_id = Regexp.last_match(1).to_i
 
           issue = Issue.find_by(id: issue_id)
-          if issue.nil?
-            puts "[freee][SKIP] invoice #{invoice_number}: 対応するIssueなし"
-            next
-          end
+          next unless issue
 
-          current_status_name = issue.status.name rescue '?'
+          puts "[freee][DRY quotation] ##{issue_id} sending_status=#{status} (current=#{issue.status.name})"
+        end
 
-          if status == 'settled'
-            puts "[freee][DRY-RUN] Issue ##{issue_id} '#{issue.subject}'"
-            puts "    partner: #{partner_name}"
-            puts "    amount:  #{amount}"
-            puts '    freee payment: settled'
-            puts "    current Redmine status: #{current_status_name}"
+        # === 請求 ===
+        begin
+          invoices = FreeeApiClient.get("/iv/invoices", company_id: company_id)
+        rescue OAuth2::Error => e
+          puts "[freee][SKIP invoice] company_id=#{company_id} 権限なし (#{e.message})"
+          next
+        end
 
-            if issue.status.is_closed?
-              puts '    → 既に完了済み'
-            else
-              puts '    → (DRY-RUN) このIssueは完了にする必要があります'
-            end
-          else
-            puts "[freee][INFO] Issue ##{issue_id} は未入金 (#{status})"
-          end
+        (invoices["invoices"] || []).each do |inv|
+          number  = inv["invoice_number"]
+          mail    = inv["sending_status"]
+          payment = inv["payment_status"]
+
+          next unless number.to_s =~ /^#?(\d+)$/
+          issue_id = Regexp.last_match(1).to_i
+
+          issue = Issue.find_by(id: issue_id)
+          next unless issue
+
+          puts "[freee][DRY invoice] ##{issue_id} mail=#{mail}, payment=#{payment} (current=#{issue.status.name})"
         end
       end
 
-      puts '[freee] DRY-RUN Finish.'
+      puts "[freee] DRY-RUN finished."
     rescue => e
       puts "[freee] ERROR: #{e.class} #{e.message}"
       Rails.logger.error "[freee] ERROR: #{e.class} #{e.message}"
@@ -70,12 +76,17 @@ namespace :freee do
     end
   end
 
-  desc 'freee請求書の入金状況を Redmine Issue に反映（本番更新）'
-  task sync_invoices: :environment do
+  # =========================================================
+  # SYNC
+  # =========================================================
+  desc 'freee 見積・請求・入金を Redmine Issue に自動反映（本番更新）'
+  task sync: :environment do
+    puts '[freee] Start sync...'
 
-    PAID_STATUS_ID = IssueStatus.find_by(name: "入金済")&.id
-
-    puts '[freee] Start REAL invoice sync...'
+    ids = freee_status_ids
+    ESTIMATE_STATUS_ID = ids[:estimate]
+    INVOICE_STATUS_ID  = ids[:invoice]
+    PAID_STATUS_ID     = ids[:paid]
 
     begin
       companies = FreeeApiClient.companies
@@ -83,79 +94,135 @@ namespace :freee do
       companies.each do |comp|
         company_id = comp["id"]
 
+        # =============================
+        #  見積チェック
+        # =============================
+        begin
+          quotations = FreeeApiClient.get("/iv/quotations",
+                                          company_id: company_id)
+        rescue OAuth2::Error => e
+          puts "[freee][SKIP quotation] company_id=#{company_id} 権限なし (#{e.message})"
+          quotations = {}
+        end
+
+        (quotations["quotations"] || []).each do |q|
+          number = q["quotation_number"]
+          mail   = q["sending_status"]
+          amount = q["total_amount"]
+
+          next unless number.to_s =~ /^#?(\d+)$/
+          issue_id = Regexp.last_match(1).to_i
+          issue = Issue.find_by(id: issue_id)
+          next unless issue
+
+          next if [ESTIMATE_STATUS_ID, INVOICE_STATUS_ID, PAID_STATUS_ID].include?(issue.status_id)
+
+          if mail == "sent"
+            quotation_url = "https://invoice.secure.freee.co.jp/reports/quotations/#{q['id']}"
+            delimited_amount = ActiveSupport::NumberHelper.number_to_delimited(amount)
+
+            puts "[freee][UPDATE] ##{issue_id} → 見積発行"
+
+            message = <<~TEXT
+              🤖 freee で #{delimited_amount} 円の見積書が送信されました 📨
+              URL: #{quotation_url}
+            TEXT
+
+            issue.init_journal(User.find(312), message)
+            issue.status_id = ESTIMATE_STATUS_ID
+            issue.save!
+          end
+        end
+
+        # =============================
+        #  請求チェック
+        # =============================
         begin
           invoices = FreeeApiClient.get("/iv/invoices",
-                                        company_id: company_id,
-                                        payment_status: "settled"
-                                       )
+                                        company_id: company_id)
         rescue OAuth2::Error => e
-          puts "[freee][SKIP] company_id=#{company_id} は権限なし → スキップ (#{e.message})"
+          puts "[freee][SKIP invoice] company_id=#{company_id} 権限なし (#{e.message})"
           next
         end
 
-        list = invoices["invoices"] || []
+        (invoices["invoices"] || []).each do |inv|
+          invoice_id  = inv['id']
+          number      = inv['invoice_number']
+          mail_status = inv['sending_status']
+          payment     = inv['payment_status']
+          amount      = inv['total_amount']
 
-        puts "[freee] Invoices count: #{list.size}"
-
-        list.each do |inv|
-          invoice_id   = inv['id']
-          number       = inv['invoice_number']
-          payment      = inv['payment_status']        # "settled" / "unsettled"
-          amount       = inv['total_amount']
-          partner      = inv['partner_name'].to_s
-          issue_id     = number.to_s[/\d+/].to_i rescue nil
-
-          # Web から直接開ける請求書URL
-          invoice_url = "https://invoice.secure.freee.co.jp/reports/invoices/#{invoice_id}"
-
-          unless issue_id && issue_id > 0
-            puts "[freee][SKIP] invoice #{number}: 対応するIssueなし"
-            next
-          end
-
+          next unless number.to_s =~ /^#?(\d+)$/
+          issue_id = Regexp.last_match(1).to_i
           issue = Issue.find_by(id: issue_id)
-          unless issue
-            puts "[freee][SKIP] Issue ##{issue_id} は存在しません"
+          next unless issue
+
+          invoice_url = "https://invoice.secure.freee.co.jp/reports/invoices/#{invoice_id}"
+          delimited_amount = ActiveSupport::NumberHelper.number_to_delimited(amount)
+
+          # ----------------------------------------
+          # (1) 請求はあるが未送信 → 見積発行扱い
+          # ----------------------------------------
+          if mail_status == "unsent" && payment != "settled"
+            next if [ESTIMATE_STATUS_ID, INVOICE_STATUS_ID, PAID_STATUS_ID].include?(issue.status_id)
+
+            puts "[freee][UPDATE] ##{issue_id} → 見積発行（請求未送信）"
+
+            message = <<~TEXT
+              🤖 freee で見積が作成されました 🧾
+              URL: #{invoice_url}
+            TEXT
+
+            issue.init_journal(User.find(312), message)
+            issue.status_id = ESTIMATE_STATUS_ID
+            issue.save!
             next
           end
 
-          if payment == 'settled'
-            # すでに入金済ステータスならスキップ
+          # ----------------------------------------
+          # (2) 請求が送信 → 請求中
+          # ----------------------------------------
+          if mail_status == "sent" && payment != "settled"
+            next if [INVOICE_STATUS_ID, PAID_STATUS_ID].include?(issue.status_id)
+
+            puts "[freee][UPDATE] ##{issue_id} → 請求中"
+
+            message = <<~TEXT
+              🤖 freee で #{delimited_amount} 円の請求書が送信されました 📤
+              URL: #{invoice_url}
+            TEXT
+
+            issue.init_journal(User.find(312), message)
+            issue.status_id = INVOICE_STATUS_ID
+            issue.save!
+            next
+          end
+
+          # ----------------------------------------
+          # (3) 入金済 → 入金済
+          # ----------------------------------------
+          if payment == "settled"
             if issue.status_id == PAID_STATUS_ID
-              puts "[freee][OK] Issue ##{issue_id} はすでに 入金済"
+              puts "[freee][OK] ##{issue_id} は既に 入金済"
               next
             end
 
-            # ===== コメント作成 =====
-            timestamp = Time.current.strftime('%Y-%m-%d %H:%M')
-            delimited_amount = ActiveSupport::NumberHelper.number_to_delimited(amount)
-            comment = <<~TEXT
-              🤖 #{timestamp} に freee で #{delimited_amount}円 の入金が確認されました 💰
-              請求書URL: #{invoice_url}
+            message = <<~TEXT
+              🤖 freee で #{delimited_amount} 円の入金が確認されました 💰
+              URL: #{invoice_url}
             TEXT
 
-            puts "[freee][UPDATE] Issue ##{issue_id} → 入金済"
-            puts "[freee][COMMENT] #{comment.strip}"
+            puts "[freee][UPDATE] ##{issue_id} → 入金済"
 
-            # ===== Redmine 更新（1 save で status & comment → Slack にも載る）=====
-            issue.init_journal(User.find(312), comment) # User 312 = あなたのユーザーでOK
+            issue.init_journal(User.find(312), message)
             issue.status_id = PAID_STATUS_ID
             issue.save!
-
-            Redmine::Hook.call_hook(
-              :controller_issues_edit_after_save,
-              controller: nil,
-              issue: issue,
-              journal: issue.current_journal
-            )
-
-          else
-            puts "[freee][INFO] Issue ##{issue_id} は未入金 (#{payment})"
           end
         end
-
       end
-      puts '[freee] REAL sync finished.'
+
+      puts '[freee] sync finished.'
+
     rescue => e
       puts "[freee] ERROR: #{e.class} #{e.message}"
       Rails.logger.error "[freee] ERROR: #{e.class} #{e.message}"
