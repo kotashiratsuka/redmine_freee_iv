@@ -1,6 +1,8 @@
 class FreeeApiClient
-  TOKEN_URL = 'https://accounts.secure.freee.co.jp/public_api/token'
-  API_BASE  = 'https://api.freee.co.jp'
+
+  AUTHORIZE_URL = "https://accounts.secure.freee.co.jp/public_api/authorize"
+  TOKEN_URL     = "https://accounts.secure.freee.co.jp/public_api/token"
+  API_BASE      = "https://api.freee.co.jp"
 
   class << self
 
@@ -41,8 +43,10 @@ class FreeeApiClient
 
     def oauth_client
       OAuth2::Client.new(
-        RedmineFreeeAuthController::CLIENT_ID,
-        RedmineFreeeAuthController::CLIENT_SECRET,
+        Setting.plugin_redmine_freee['client_id'],
+        Setting.plugin_redmine_freee['client_secret'],
+        site: API_BASE,
+        authorize_url: AUTHORIZE_URL,
         token_url: TOKEN_URL
       )
     end

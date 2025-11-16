@@ -1,0 +1,53 @@
+<p>
+  Client ID / Secret を入力、適用を押して保存してから認証を開始してください
+</p>
+
+<p>
+  <label for="settings_client_id">Client ID</label>
+  <input type="text"
+         id="settings_client_id"
+         name="settings[client_id]"
+         value="<%= settings['client_id'] %>" />
+</p>
+
+<p>
+  <label for="settings_client_secret">Client Secret</label>
+  <input type="password"
+         id="settings_client_secret"
+         name="settings[client_secret]"
+         value="<%= settings['client_secret'] %>" />
+</p>
+
+<p>
+  <label for="settings_user_id">更新時に使用する Redmine ユーザー</label>
+  <%= select_tag 'settings[user_id]',
+        options_from_collection_for_select(
+          User.active.order(:login),
+          :id, :login,
+          settings['user_id']
+        )
+  %>
+</p>
+<p>
+  このユーザーとして Issue のコメントおよびステータス更新が実行されます。
+</p>
+
+<% cred = FreeeCredential.first %>
+
+<% if cred.present? %>
+  <!-- ▼ 認証済み -->
+  <p><strong>認証状態：</strong> ✅ 認証済み</p>
+  <p>Access Token 有効期限：<%= cred.expires_at %></p>
+  <p>
+    <%= link_to "認証解除する",
+          "/redmine_freee/auth/reset",
+          method: :post,
+          data: { confirm: "認証を解除しますか？" } %>
+  </p>
+<% else %>
+  <!-- ▼ 未認証 -->
+  <p><strong>認証状態：</strong> ❌ 未認証</p>
+  <p>
+    <%= link_to "▶ 認証を開始する", "/redmine_freee/auth/start" %>
+  </p>
+<% end %>

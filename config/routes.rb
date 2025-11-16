@@ -1,4 +1,5 @@
 RedmineApp::Application.routes.draw do
-  get 'redmine_freee/auth/start',    to: 'redmine_freee_auth#start'
-  get 'redmine_freee/auth/callback', to: 'redmine_freee_auth#callback'
+  get  'redmine_freee/auth/start',    to: 'redmine_freee_auth#start'
+  get  'redmine_freee/auth/callback', to: 'redmine_freee_auth#callback'
+  post 'redmine_freee/auth/reset',    to: 'redmine_freee_auth#reset'
 end

@@ -2,39 +2,61 @@ class RedmineFreeeAuthController < ApplicationController
   require 'oauth2'
 
   #
-  # === 固定設定（プラグイン設定画面なし）
+  # === プラグイン設定ヘルパー
   #
-  CLIENT_ID     = ""
-  CLIENT_SECRET = ""
-  REDIRECT_URI  = ""
+  def plugin_settings
+    Setting.plugin_redmine_freee
+  end
 
-  AUTHORIZE_URL = "https://accounts.secure.freee.co.jp/public_api/authorize"
-  TOKEN_URL     = "https://accounts.secure.freee.co.jp/public_api/token"
-  API_BASE      = "https://api.freee.co.jp"
-  SCOPE         = "read"
+  def client_id
+    plugin_settings['client_id']
+  end
+
+  def client_secret
+    plugin_settings['client_secret']
+  end
+
+  def scope
+    "read"
+  end
 
 
-  # OAuth2 クライアント
+  #
+  # === 動的 REDIRECT_URI
+  # https + ドメイン + /redmine_freee/auth/callback
+  #
+  def redirect_uri
+    URI.join(
+      "#{request.protocol}#{request.host_with_port}",
+      redmine_freee_auth_callback_path
+    ).to_s
+  end
+
+
+  #
+  # === OAuth2 クライアント
+  #
   def oauth_client
     OAuth2::Client.new(
-      CLIENT_ID,
-      CLIENT_SECRET,
-      authorize_url: AUTHORIZE_URL,
-      token_url: TOKEN_URL
+      client_id,
+      client_secret,
+      site:       "https://api.freee.co.jp",
+      authorize_url: "https://accounts.secure.freee.co.jp/public_api/authorize",
+      token_url:     "https://accounts.secure.freee.co.jp/public_api/token"
     )
   end
 
 
   #
-  # === 認証開始
+  # === 認証開始（/start）
   #
   def start
     state = SecureRandom.hex(16)
     session[:freee_oauth_state] = state
 
     redirect_to oauth_client.auth_code.authorize_url(
-      redirect_uri: REDIRECT_URI,
-      scope: SCOPE,
+      redirect_uri: redirect_uri,
+      scope: scope,
       state: state,
       prompt: "select_company"
     )
@@ -42,33 +64,35 @@ class RedmineFreeeAuthController < ApplicationController
 
 
   #
-  # === コールバック
+  # === コールバック（/callback）
   #
   def callback
+    # CSRF Check
     if params[:state] != session[:freee_oauth_state]
       render plain: "Invalid state", status: 400
       return
     end
 
+    # Token Exchange
     token = oauth_client.auth_code.get_token(
       params[:code],
-      redirect_uri: REDIRECT_URI
+      redirect_uri: redirect_uri
     )
 
-    # 保存（company_id は保存しない）
+    # 保存
     FreeeCredential.delete_all
     FreeeCredential.create!(
       access_token:  token.token,
       refresh_token: token.refresh_token,
       expires_at:    Time.at(token.expires_at)
     )
-
-    render plain: <<~TEXT
-      freee OAuth 認証成功しました。
-
-      Access Token:  #{token.token}
-      Refresh Token: #{token.refresh_token}
-      Expires At:    #{Time.at(token.expires_at)}
-    TEXT
+    redirect_to "/settings/plugin/redmine_freee"
   end
+
+  def reset
+    FreeeCredential.delete_all
+    flash[:notice] = "freee の認証を解除しました。"
+    redirect_to "/settings/plugin/redmine_freee"
+  end
+
 end

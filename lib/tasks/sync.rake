@@ -1,6 +1,12 @@
 # plugins/redmine_freee/lib/tasks/sync.rake
 require "active_support/number_helper"
 
+# ===== コメント投稿ユーザー =====
+def freee_update_user
+  uid = Setting.plugin_redmine_freee['user_id'].presence || 1
+  User.find(uid)
+end
+
 # ===== ステータスID共通取得 =====
 def freee_status_ids
   {
@@ -128,7 +134,7 @@ namespace :freee do
               URL: #{quotation_url}
             TEXT
 
-            issue.init_journal(User.find(312), message)
+            issue.init_journal(freee_update_user, message)
             issue.status_id = ESTIMATE_STATUS_ID
             issue.save!
           end
@@ -161,26 +167,7 @@ namespace :freee do
           delimited_amount = ActiveSupport::NumberHelper.number_to_delimited(amount)
 
           # ----------------------------------------
-          # (1) 請求はあるが未送信 → 見積発行扱い
-          # ----------------------------------------
-          if mail_status == "unsent" && payment != "settled"
-            next if [ESTIMATE_STATUS_ID, INVOICE_STATUS_ID, PAID_STATUS_ID].include?(issue.status_id)
-
-            puts "[freee][UPDATE] ##{issue_id} → 見積発行（請求未送信）"
-
-            message = <<~TEXT
-              🤖 freee で見積が作成されました 🧾
-              URL: #{invoice_url}
-            TEXT
-
-            issue.init_journal(User.find(312), message)
-            issue.status_id = ESTIMATE_STATUS_ID
-            issue.save!
-            next
-          end
-
-          # ----------------------------------------
-          # (2) 請求が送信 → 請求中
+          # (1) 請求が送信 → 請求中
           # ----------------------------------------
           if mail_status == "sent" && payment != "settled"
             next if [INVOICE_STATUS_ID, PAID_STATUS_ID].include?(issue.status_id)
@@ -192,14 +179,14 @@ namespace :freee do
               URL: #{invoice_url}
             TEXT
 
-            issue.init_journal(User.find(312), message)
+            issue.init_journal(freee_update_user, message)
             issue.status_id = INVOICE_STATUS_ID
             issue.save!
             next
           end
 
           # ----------------------------------------
-          # (3) 入金済 → 入金済
+          # (2) 入金済 → 入金済
           # ----------------------------------------
           if payment == "settled"
             if issue.status_id == PAID_STATUS_ID
@@ -214,7 +201,7 @@ namespace :freee do
 
             puts "[freee][UPDATE] ##{issue_id} → 入金済"
 
-            issue.init_journal(User.find(312), message)
+            issue.init_journal(freee_update_user, message)
             issue.status_id = PAID_STATUS_ID
             issue.save!
           end

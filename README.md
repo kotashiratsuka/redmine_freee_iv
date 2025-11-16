@@ -1,75 +1,131 @@
 # Redmine Freee Plugin
 
-Redmine のチケット番号（Issue ID）と freee 請求書番号を連携し、
-freee 側で **入金済（settled）になると自動で Redmine のチケットを更新**するプラグインです。
+Redmine のチケット番号（Issue ID）と freee の見積・請求データを自動連携し、
 
-- freee OAuth 認証
-- 請求書一覧の取得
-- 入金済みチェック
-- Redmine のステータス自動変更
-- 自動コメント追加（Slack 通知と連携）
-- DRY-RUN での試験実行
-- 複数の freee 事業所に対応（権限なしは自動スキップ）
+- 見積書送信
+- 請求書送信
+- 入金済
+
+これら freee のイベントに応じて **Redmine の Issue ステータスを自動更新**し、
+さらに **URL 付きのコメントを自動投稿**するプラグインです。
 
 ---
 
-## 🔧 機能概要
+# 🔧 機能概要
 
-### 1. freee OAuth 認証
-`/redmine_freee/auth/start` にアクセスすると freee のログイン画面が表示されます。
-認証が成功すると access_token・refresh_token が DB に保存されます。
+## 1. freee OAuth 認証
 
-保存テーブル：`freee_credentials`
+Redmine の設定画面で Client ID / Secret を登録し、
+「認証を開始する」リンクから freee OAuth を実行できます。
 
-### 2. freee API 経由で請求書を取得
-各事業所（company_id）ごとに
-
-```
-GET /iv/invoices?company_id=XXX&payment_status=settled
-```
-
-を実行します。
-権限がない company は自動でスキップされます。
+認証後はアクセストークンが `freee_credentials` テーブルに保存されます。
 
 ---
 
-## 3. Issue 自動更新仕様
+## 2. freee API 経由でデータ取得
 
-- freee の **請求書番号 = `#1234` → Redmine Issue ID = 1234**
-- 入金済み（settled）の場合：
-- Redmine ステータスを「入金済」に変更（ID は名称から自動取得）
+### 見積一覧 API
+
+```
+GET /iv/quotations?company_id=XXX
+```
+
+### 請求書一覧 API
+
+```
+GET /iv/invoices?company_id=XXX
+```
+
+権限のない company_id は freee 側の仕様により自動的に 401 となるため、
+プラグイン内で安全にスキップしています。
+
+---
+
+# 🔄 Issue 自動ステータス更新ルール（実装準拠）
+
+freee の番号と Issue ID の対応は以下：
+
+```
+"#1234" → Issue ID 1234
+```
+
+---
+
+## 1. 見積送信（quotation.sending_status = "sent"）
+
+Redmine → **見積発行**
 
 コメント例：
 
 ```
-🤖 2025-11-15 12:02 に freeeで 22,448円 の入金が確認されました 💰
-請求書URL: https://invoice.secure.freee.co.jp/reports/invoices/44600944
+🤖 freee で 33,000 円の見積書が送信されました 📨
+URL: https://invoice.secure.freee.co.jp/reports/quotations/xxxx
 ```
 
 ---
 
-## 📦 インストール
+## 2. 請求書送信（invoice.sending_status = "sent"）
 
-### 1. plugins/ 配下へ配置
+Redmine → **請求中**
+
+コメント例：
+
+```
+🤖 freee で 33,000 円の請求書が送信されました 📤
+URL: https://invoice.secure.freee.co.jp/reports/invoices/xxxx
+```
+
+---
+
+## 3. 入金確認（invoice.payment_status = "settled"）
+
+Redmine → **入金済**
+
+コメント例：
+
+```
+🤖 freee で 33,000 円の入金が確認されました 💰
+URL: https://invoice.secure.freee.co.jp/reports/invoices/xxxx
+```
+
+---
+
+# 📌 Redmine ステータス名
+
+プラグインは以下のステータス名で ID を検索します：
+
+| Redmine ステータス名 | freee イベント |
+|----------------------|----------------|
+| **見積発行** | 見積書送信 |
+| **請求中**   | 請求書送信 |
+| **入金済**   | 入金確認 |
+
+これらのステータス名を事前に Redmine 側で作成しておいてください。
+
+---
+
+# ⚙️ インストール
+
+## 1. プラグイン配置
 
 ```
 cd /home/redmine/plugins
-git clone https://github.com/kotashiratsuka/redmine_freee.git
+git clone git@github.com:USERNAME/redmine_freee.git
 ```
 
-### 2. 必要な Gem をインストール
+## 2. Gem インストール
 
 ```
 bundle install
 ```
 
-### 3. DB マイグレーション
+## 3. DB マイグレーション
 
 ```
 RAILS_ENV=production bundle exec rake db:migrate_plugins
 ```
 
-### 4. サービス再起動
+## 4. Redmine 再起動
 
 ```
 service puma restart
@@ -77,73 +133,82 @@ service puma restart
 
 ---
 
-## 🚀 使い方
+# 🚀 使用方法
 
-### 1. アプリの作成
-https://app.secure.freee.co.jp/developers/applications/new で新しいアプリを作成します
+## 1. freee デベロッパーアプリ作成
 
-アプリ名、概要は適宜、権限は "[freee請求書] 見積書・請求書・納品書" です
+作成URL：
+https://app.secure.freee.co.jp/developers/applications/new
 
-callback URLは `https://YOUR_HOST/redmine_freee/auth/callback` を設定し、表示されている
-`Client ID` と `Client Secret` を `app/controllers/redmine_freee_auth_controller.rb` に設定します
-
-### 2. freee 認証開始
-
-ブラウザで：
+- 権限 → **[freee請求書] 見積書・請求書・納品書**
+- Callback URL：
 
 ```
-https://YOUR_HOST/redmine_freee/auth/start
+https://YOUR_HOST/redmine_freee/auth/callback
 ```
 
-### 3. DRY-RUN
+## 2. Redmine のプラグイン設定で Client ID / Secret を入力
+→ 「適用」
+→ 「認証を開始する」リンクから OAuth
+
+---
+
+# 🧪 DRY RUN（確認用）
 
 ```
-RAILS_ENV=production bundle exec rake freee:dry_run_match
+RAILS_ENV=production bundle exec rake freee:dry_run
 ```
 
-### 4. 同期
+freee データを読み込み、一切変更せずログ出力のみ行います。
+
+---
+
+# 🔄 同期（本番更新）
 
 ```
-RAILS_ENV=production bundle exec rake freee:sync_invoices
+RAILS_ENV=production bundle exec rake freee:sync
+```
+
+- ステータス更新
+- コメント投稿
+を自動で行います。
+
+---
+
+# ⏱ Cron 設定例（平日9,12,15,18,21時更新）
+
+```
+0 9,12,15,18,21 * * 1-5 RAILS_ENV=production bundle exec rake freee:sync
 ```
 
 ---
 
-## 🔄 Cron の例
-
-```
-*/10 * * * * cd /home/redmine && RAILS_ENV=production bundle exec rake freee:sync_invoices
-```
-
----
-
-## 🧱 ディレクトリ構成
+# 📂 ディレクトリ構成
 
 ```
 redmine_freee/
 ├── app/
-│ ├── controllers/redmine_freee_auth_controller.rb
-│ ├── models/freee_credential.rb
-│ └── services/freee_api_client.rb
+│   ├── controllers/redmine_freee_auth_controller.rb
+│   ├── models/freee_credential.rb
+│   └── services/freee_api_client.rb
 ├── lib/tasks/sync.rake
 ├── db/migrate/20251115080912_create_freee_credentials.rb
 ├── config/routes.rb
-├── init.rb
-└── README.md
+└── init.rb
 ```
 
 ---
 
-## ⚠️ 注意事項
+# ⚠️ 注意事項
 
-- freee の請求書番号が `#1234` の形式である必要あり
-- ステータス「入金済」は名称検索で ID を取得
-- 既に入金済みステータスなら更新しない
-- User ID は `312` を使用（環境に合わせて変更可）
+- freee の見積・請求番号は `#1234` の形式（Issue ID と一致必須）
+- sending_status の `nil` / `""` / `"unsent"` は全て未送信扱いに統一
+- 権限エラー(401)は安全にスキップ
+- コメント投稿ユーザー ID は **settings[user_id]** で変更可能
 
 ---
 
-## 👤 Author
+# 👤 Author
 
 **Kota Shiratsuka**
 INSANEWORKS LLC
