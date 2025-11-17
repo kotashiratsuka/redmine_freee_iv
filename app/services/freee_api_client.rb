@@ -6,6 +6,9 @@ class FreeeApiClient
 
   class << self
 
+    # ======================
+    # アクセストークン取得
+    # ======================
     def current_access_token
       cred = FreeeCredential.first
       return nil unless cred
@@ -22,7 +25,7 @@ class FreeeApiClient
       )
     end
 
-
+    # ====== 単発 GET ======
     def get(path, params = {})
       token = current_access_token
       raise "No freee credentials" unless token
@@ -31,6 +34,7 @@ class FreeeApiClient
       JSON.parse(res.body)
     end
 
+    # ====== 会社一覧 ======
     def companies
       res = get("/api/1/companies")
       res["companies"] || []
@@ -39,8 +43,53 @@ class FreeeApiClient
       []
     end
 
+    # ==========================================
+    # ★★★ ページング GET（正しい位置）★★★
+    # ==========================================
+    def get_all(path, company_id:, limit: 20, max_total: 20)
+      if max_total == :unlimited
+        max_total = Float::INFINITY
+      else
+        max_total = max_total.to_i
+        max_total = 20 if max_total < 20
+      end
+
+      offset     = 0
+      fetched    = 0
+      all_items  = []
+
+      loop do
+        break if fetched >= max_total
+
+        begin
+          res = get(
+            path,
+            company_id: company_id,
+            limit: limit,
+            offset: offset
+          )
+        rescue OAuth2::Error => e
+          puts "[freee][SKIP] #{path} company_id=#{company_id} 権限なし (#{e.message})"
+          break
+        end
+
+        items = res.values.first || []
+        break if items.empty?
+
+        allowed = max_total - fetched
+        batch   = (max_total.infinite? ? items : items.first(allowed))
+
+        all_items.concat(batch)
+        fetched += batch.size
+        offset  += limit
+      end
+
+      all_items
+    end
+
     private
 
+    # ====== OAuth クライアント ======
     def oauth_client
       OAuth2::Client.new(
         Setting.plugin_redmine_freee['client_id'],
@@ -51,6 +100,7 @@ class FreeeApiClient
       )
     end
 
+    # ====== リフレッシュ ======
     def refresh!(cred)
       token = OAuth2::AccessToken.new(
         oauth_client,

@@ -1,5 +1,5 @@
 Redmine::Plugin.register :redmine_freee do
-  name        'Redmine Freee Plugin'
+  name        'Redmine freee Plugin'
   author      'Kota Shiratsuka'
   description 'freee Invoice Status Sync'
   version     '0.2.0'
@@ -25,24 +25,14 @@ Redmine::Plugin.register :redmine_freee do
   'invoice_unpaid_status' => '0',
 
   # --- コメントテンプレ ---
+  'quotation_unsent_comment' => "📝 freee に {amount} 円の見積書が作成されました\nURL: {url}",
+  'quotation_sent_comment' => "📤 freee で {amount} 円の見積書が送信されました\nURL: {url}",
+  'invoice_unsent_comment' => "📝 freee に {amount} 円の請求書が作成されました\nURL: {url}",
+  'invoice_sent_comment' => "📤 freee で {amount} 円の請求書が送信されました\nURL: {url}",
+  'invoice_unpaid_comment' => "💰 freee で {amount} 円の入金待ちです\nURL: {url}",
+  'invoice_paid_comment' => "💰 freee で {amount} 円の入金が確認されました\nURL: {url}",
 
-  'quotation_unsent_comment' =>
-    "📝 freee に {amount} 円の見積書が作成されました\nURL: {url}",
-
-  'quotation_sent_comment' =>
-    "📤 freee で {amount} 円の見積書が送信されました\nURL: {url}",
-
-  'invoice_unsent_comment' =>
-    "📝 freee に {amount} 円の請求書が作成されました\nURL: {url}",
-
-  'invoice_sent_comment' =>
-    "📤 freee で {amount} 円の請求書が送信されました\nURL: {url}",
-
-  'invoice_unpaid_comment' =>
-    "💰 freee で {amount} 円の入金待ちです\nURL: {url}",
-
-  'invoice_paid_comment' =>
-    "💰 freee で {amount} 円の入金が確認されました\nURL: {url}",
-
+  # --- 最大取得件数 ---
+  'max_fetch_total' => '100'
   }, partial: 'settings/freee_settings'
 end

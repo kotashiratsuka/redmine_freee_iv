@@ -21,64 +21,65 @@ end
 def run_sync(dry_run:)
   plugin = Setting.plugin_redmine_freee
 
-  # ==== 設定 ====
   sync_quotations = plugin['sync_quotations'] == '1'
   sync_invoices   = plugin['sync_invoices']  == '1'
 
-  # 見積ステータス
+  # === 見積ステータス / テンプレート ===
   quotation_sent_id   = plugin['quotation_sent_status'].to_i
   quotation_unsent_id = plugin['quotation_unsent_status'].to_i
+  tpl_q_sent          = plugin['quotation_sent_comment']
+  tpl_q_unsent        = plugin['quotation_unssent_comment']
 
-  # 見積コメントテンプレート
-  tpl_q_sent   = plugin['quotation_sent_comment']
-  tpl_q_unsent = plugin['quotation_unssent_comment']
-
-  # 請求書ステータス
+  # === 請求書ステータス / テンプレート ===
   inv_sent_id   = plugin['invoice_sent_status'].to_i
   inv_unsent_id = plugin['invoice_unsent_status'].to_i
   inv_paid_id   = plugin['invoice_paid_status'].to_i
   inv_unpaid_id = plugin['invoice_unpaid_status'].to_i
 
-  # 請求書コメントテンプレート
   tpl_i_sent   = plugin['invoice_sent_comment']
   tpl_i_unsent = plugin['invoice_unsent_comment']
   tpl_i_paid   = plugin['invoice_paid_comment']
   tpl_i_unpaid = plugin['invoice_unpaid_comment']
 
-  puts(dry_run ? "[freee] Start DRY-RUN..." : "[freee] Start sync...")
+  # === 設定値（100,200,300,...,unlimited） ===
+  raw_total = plugin['max_fetch_total']
+  max_total = (raw_total == 'unlimited' ? :unlimited : raw_total.to_i)
 
+  puts dry_run ? "[freee] Start DRY-RUN..." : "[freee] Start sync..."
+
+  # ===============================
+  #   会社ループ
+  # ===============================
   companies = FreeeApiClient.companies
 
   companies.each do |comp|
     company_id = comp["id"]
 
-    # =====================================================================
-    #  見積
-    # =====================================================================
+    # ==========================
+    #   見積 (quotations)
+    # ==========================
     if sync_quotations
-      begin
-        quotations = FreeeApiClient.get("/iv/quotations", company_id: company_id)
-      rescue OAuth2::Error => e
-        puts "[freee][SKIP quotation] company_id=#{company_id} 権限なし (#{e.message})"
-        quotations = {}
-      end
+      quotations = FreeeApiClient.get_all(
+        "/iv/quotations",
+        company_id: company_id,
+        limit: 100,
+        max_total: max_total
+      )
 
-      (quotations["quotations"] || []).each do |q|
+      quotations.each do |q|
         subject = q["subject"].to_s
         status  = q["sending_status"]
         amount  = q["total_amount"]
 
-        # subject から [#1234] を抽出
+        # [#1234] → issue_id
         next unless subject =~ /\[#?(\d+)\]/
         issue_id = Regexp.last_match(1).to_i
-
-        issue = Issue.find_by(id: issue_id)
+        issue    = Issue.find_by(id: issue_id)
         next unless issue
 
         amount_fmt    = ActiveSupport::NumberHelper.number_to_delimited(amount)
         quotation_url = "https://invoice.secure.freee.co.jp/reports/quotations/#{q['id']}"
 
-        # === 遷移先判定 ===
         new_status_id =
           case status
           when "sent"   then quotation_sent_id
@@ -87,19 +88,14 @@ def run_sync(dry_run:)
           end
 
         next_status =
-          if new_status_id.zero?
-            "変更しない"
-          else
-            IssueStatus.find_by(id: new_status_id)&.name || "不明"
-          end
+          new_status_id.zero? ? "変更しない" :
+            (IssueStatus.find_by(id: new_status_id)&.name || "不明")
 
-        # === DRY-RUN ===
         if dry_run
           puts "[freee][DRY quotation] ##{issue_id} status=#{status}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
           next
         end
 
-        # === SYNC ===
         next if new_status_id.zero?
         next if issue.status_id == new_status_id
 
@@ -125,35 +121,33 @@ def run_sync(dry_run:)
       end
     end
 
-    # =====================================================================
-    #  請求書
-    # =====================================================================
+    # ==========================
+    #   請求書 (invoices)
+    # ==========================
     if sync_invoices
-      begin
-        invoices = FreeeApiClient.get("/iv/invoices", company_id: company_id)
-      rescue OAuth2::Error => e
-        puts "[freee][SKIP invoice] company_id=#{company_id} 権限なし (#{e.message})"
-        next
-      end
+      invoices = FreeeApiClient.get_all(
+        "/iv/invoices",
+        company_id: company_id,
+        limit: 100,
+        max_total: max_total
+      )
 
-      (invoices["invoices"] || []).each do |inv|
-        subject  = inv['subject'].to_s
-        mail     = inv['sending_status']
-        payment  = inv['payment_status']
-        amount   = inv['total_amount']
+      invoices.each do |inv|
+        subject    = inv['subject'].to_s
+        mail       = inv['sending_status']
+        payment    = inv['payment_status']
+        amount     = inv['total_amount']
         invoice_id = inv['id']
 
-        # subject から [#1234] を抽出
+        # subject から [#1234]
         next unless subject =~ /\[#?(\d+)\]/
         issue_id = Regexp.last_match(1).to_i
-
-        issue = Issue.find_by(id: issue_id)
+        issue    = Issue.find_by(id: issue_id)
         next unless issue
 
         amount_fmt  = ActiveSupport::NumberHelper.number_to_delimited(amount)
         invoice_url = "https://invoice.secure.freee.co.jp/reports/invoices/#{invoice_id}"
 
-        # === 遷移先判定 ===
         new_status_id =
           if payment == "settled"
             inv_paid_id
@@ -169,19 +163,14 @@ def run_sync(dry_run:)
           end
 
         next_status =
-          if new_status_id.zero?
-            "変更しない"
-          else
-            IssueStatus.find_by(id: new_status_id)&.name || "不明"
-          end
+          new_status_id.zero? ? "変更しない" :
+            (IssueStatus.find_by(id: new_status_id)&.name || "不明")
 
-        # === DRY-RUN ===
         if dry_run
           puts "[freee][DRY invoice] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
           next
         end
 
-        # === SYNC ===
         next if new_status_id.zero?
         next if issue.status_id == new_status_id
 
@@ -213,11 +202,11 @@ def run_sync(dry_run:)
     end
   end
 
-  puts(dry_run ? "[freee] DRY-RUN finished." : "[freee] sync finished.")
+  puts dry_run ? "[freee] DRY-RUN finished." : "[freee] sync finished."
 end
 
 # =====================================================================
-# TASK 定義（DRY-RUN と sync の呼び出しだけ）
+# TASK 定義
 # =====================================================================
 namespace :freee do
   desc 'freee 見積・請求ステータス DRY-RUN'

@@ -1,4 +1,4 @@
-# Redmine Freee Plugin
+# Redmine freee Plugin
 
 Redmine のチケット番号（Issue ID）と freee の見積書・請求書ステータスを自動連携し、
 freee 側の「件名（subject）」に含まれる **[#1234]** を Redmine Issue ID として扱います
@@ -212,6 +212,7 @@ redmine_freee/
 - 「変更しない」を選んだイベントはスキップされます
 - 権限エラー（401）は安全にスキップ
 - コメント投稿ユーザーは `settings[user_id]` で指定
+- それぞれの取得件数を（100,200,300,400,unlimited）で選択可能
 
 ------------------------------------------------------------
 
