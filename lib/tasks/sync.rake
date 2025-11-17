@@ -31,7 +31,7 @@ def run_sync(dry_run:)
 
   # 見積コメントテンプレート
   tpl_q_sent   = plugin['quotation_sent_comment']
-  tpl_q_unsent = plugin['quotation_unsent_comment']
+  tpl_q_unsent = plugin['quotation_unssent_comment']
 
   # 請求書ステータス
   inv_sent_id   = plugin['invoice_sent_status'].to_i
@@ -64,14 +64,15 @@ def run_sync(dry_run:)
       end
 
       (quotations["quotations"] || []).each do |q|
-        number = q["quotation_number"]
-        status = q["sending_status"]
-        amount = q["total_amount"]
+        subject = q["subject"].to_s
+        status  = q["sending_status"]
+        amount  = q["total_amount"]
 
-        next unless number.to_s =~ /^#?(\d+)$/
-
+        # subject から [#1234] を抽出
+        next unless subject =~ /\[#?(\d+)\]/
         issue_id = Regexp.last_match(1).to_i
-        issue    = Issue.find_by(id: issue_id)
+
+        issue = Issue.find_by(id: issue_id)
         next unless issue
 
         amount_fmt    = ActiveSupport::NumberHelper.number_to_delimited(amount)
@@ -94,12 +95,11 @@ def run_sync(dry_run:)
 
         # === DRY-RUN ===
         if dry_run
-          puts "[freee][DRY quotation] ##{issue_id} sending_status=#{status}, amount=#{amount_fmt} " \
-               "(current=#{issue.status.name}, next=#{next_status})"
+          puts "[freee][DRY quotation] ##{issue_id} status=#{status}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
           next
         end
 
-        # === 本番 ===
+        # === SYNC ===
         next if new_status_id.zero?
         next if issue.status_id == new_status_id
 
@@ -137,16 +137,17 @@ def run_sync(dry_run:)
       end
 
       (invoices["invoices"] || []).each do |inv|
+        subject  = inv['subject'].to_s
+        mail     = inv['sending_status']
+        payment  = inv['payment_status']
+        amount   = inv['total_amount']
         invoice_id = inv['id']
-        number     = inv['invoice_number']
-        mail       = inv['sending_status']
-        payment    = inv['payment_status']
-        amount     = inv['total_amount']
 
-        next unless number.to_s =~ /^#?(\d+)$/
-
+        # subject から [#1234] を抽出
+        next unless subject =~ /\[#?(\d+)\]/
         issue_id = Regexp.last_match(1).to_i
-        issue    = Issue.find_by(id: issue_id)
+
+        issue = Issue.find_by(id: issue_id)
         next unless issue
 
         amount_fmt  = ActiveSupport::NumberHelper.number_to_delimited(amount)
@@ -176,12 +177,11 @@ def run_sync(dry_run:)
 
         # === DRY-RUN ===
         if dry_run
-          puts "[freee][DRY invoice] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} " \
-               "(current=#{issue.status.name}, next=#{next_status})"
+          puts "[freee][DRY invoice] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
           next
         end
 
-        # === 本番 ===
+        # === SYNC ===
         next if new_status_id.zero?
         next if issue.status_id == new_status_id
 
@@ -225,7 +225,7 @@ namespace :freee do
     run_sync(dry_run: true)
   end
 
-  desc 'freee 見積・請求ステータス 同期（本番）'
+  desc 'freee 見積・請求ステータス 同期 SYNC'
   task sync: :environment do
     run_sync(dry_run: false)
   end
