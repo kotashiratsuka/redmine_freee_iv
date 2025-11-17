@@ -1,41 +1,33 @@
 <p>
-  Client ID / Secret を入力、適用を押して保存してから認証を開始してください
-</p>
-
-<p>
   <label for="settings_client_id">Client ID</label>
-  <input type="text"
-         id="settings_client_id"
+  <input type="text" id="settings_client_id"
          name="settings[client_id]"
          value="<%= settings['client_id'] %>" />
 </p>
 
 <p>
   <label for="settings_client_secret">Client Secret</label>
-  <input type="password"
-         id="settings_client_secret"
+  <input type="password" id="settings_client_secret"
          name="settings[client_secret]"
          value="<%= settings['client_secret'] %>" />
 </p>
 
 <p>
-  <label for="settings_user_id">更新時に使用する Redmine ユーザー</label>
-  <%= select_tag 'settings[user_id]',
-        options_from_collection_for_select(
-          User.active.order(:login),
-          :id, :login,
-          settings['user_id']
-        )
-  %>
+  <input type="submit" value="保存" class="button-small">
 </p>
+
+<hr>
+<!-- ========================================================= -->
+<!--  認証状態 -->
+<!-- ========================================================= -->
+
 <p>
-  このユーザーとして Issue のコメントおよびステータス更新が実行されます。
+  Client ID / Secret を入力、保存してから認証を開始してください
 </p>
 
 <% cred = FreeeCredential.first %>
 
 <% if cred.present? %>
-  <!-- ▼ 認証済み -->
   <p><strong>認証状態：</strong> ✅ 認証済み</p>
   <p>Access Token 有効期限：<%= cred.expires_at %></p>
   <p>
@@ -45,9 +37,129 @@
           data: { confirm: "認証を解除しますか？" } %>
   </p>
 <% else %>
-  <!-- ▼ 未認証 -->
   <p><strong>認証状態：</strong> ❌ 未認証</p>
   <p>
     <%= link_to "▶ 認証を開始する", "/redmine_freee/auth/start" %>
   </p>
 <% end %>
+
+<hr>
+
+<!-- ========================================================= -->
+<!--  見積書（QUOTATION） -->
+<!-- ========================================================= -->
+
+<h3>📄 見積書（Quotation）設定</h3>
+
+<p>
+  <label>
+    <%= check_box_tag 'settings[sync_quotations]', '1',
+          settings['sync_quotations'] == '1' %>
+    見積書を同期する
+  </label>
+</p>
+
+<p>
+  見積書が <strong>送付済み (sent)</strong> の時のステータス：
+  <%= select_tag 'settings[quotation_sent_status]',
+        options_for_select(
+          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+          selected: settings['quotation_sent_status'].to_i
+        )
+  %>
+  <label>見積書（送付済）のコメントテンプレート：</label><br>
+  <textarea name="settings[quotation_sent_comment]" rows="3" style="width: 98%;"><%= settings['quotation_sent_comment'] %></textarea>
+</p>
+
+<p>
+  見積書が <strong>未送付 (unsent)</strong> の時のステータス：
+  <%= select_tag 'settings[quotation_unsent_status]',
+        options_for_select(
+          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+          selected: settings['quotation_unsent_status'].to_i
+        )
+  %>
+  <label>見積書（未送付）のコメントテンプレート：</label><br>
+  <textarea name="settings[quotation_unsent_comment]" rows="3" style="width: 98%;"><%= settings['quotation_unsent_comment'] %></textarea>
+</p>
+
+<hr>
+
+<!-- ========================================================= -->
+<!--  請求書（INVOICE） -->
+<!-- ========================================================= -->
+
+<h3>🧾 請求書（Invoice）設定</h3>
+
+<p>
+  <label>
+    <%= check_box_tag 'settings[sync_invoices]', '1',
+          settings['sync_invoices'] == '1' %>
+    請求書を同期する
+  </label>
+</p>
+
+<p>
+  請求書が <strong>送付済み (sent)</strong> の時のステータス：
+  <%= select_tag 'settings[invoice_sent_status]',
+        options_for_select(
+          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+          selected: settings['invoice_sent_status'].to_i
+        )
+  %>
+  <label>請求書（送付済）のコメントテンプレート：</label><br>
+  <textarea name="settings[invoice_sent_comment]" rows="3" style="width: 98%;"><%= settings['invoice_sent_comment'] %></textarea>
+</p>
+
+<p>
+  請求書が <strong>未送付 (unsent)</strong> の時のステータス：
+  <%= select_tag 'settings[invoice_unsent_status]',
+        options_for_select(
+          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+          selected: settings['invoice_unsent_status'].to_i
+        )
+  %>
+  <label>請求書（未送付）のコメントテンプレート：</label><br>
+  <textarea name="settings[invoice_unsent_comment]" rows="3" style="width: 98%;"><%= settings['invoice_unsent_comment'] %></textarea>
+</p>
+
+<p>
+  請求書が <strong>入金済み (settled)</strong> の時のステータス：
+  <%= select_tag 'settings[invoice_paid_status]',
+        options_for_select(
+          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+          selected: settings['invoice_paid_status'].to_i
+        )
+  %>
+  <label>請求書（入金済み）のコメントテンプレート：</label><br>
+  <textarea name="settings[invoice_paid_comment]" rows="3" style="width: 98%;"><%= settings['invoice_paid_comment'] %></textarea>
+  請求書が <strong>入金待ち (unsettled)</strong> の時のステータス：
+  <%= select_tag 'settings[invoice_unpaid_status]',
+        options_for_select(
+          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+          selected: settings['invoice_unpaid_status'].to_i
+        )
+  %>
+  <label>請求書（入金待ち）のコメントテンプレート：</label><br>
+  <textarea name="settings[invoice_unpaid_comment]" rows="3" style="width: 98%;"><%= settings['invoice_unpaid_comment'] %></textarea>
+</p>
+
+<hr>
+
+
+<!-- ========================================================= -->
+<!--  更新ユーザー設定 -->
+<!-- ========================================================= -->
+
+<p>
+  <label for="settings_user_id">更新時に使用する Redmine ユーザー</label>
+  <%= select_tag 'settings[user_id]',
+        options_from_collection_for_select(
+          User.active.order(:login), :id, :login, settings['user_id']
+        )
+  %>
+</p>
+
+<p>
+  このユーザーとして Issue のコメントおよびステータス更新が実行されます。
+</p>

@@ -8,6 +8,26 @@ class RedmineFreeeAuthController < ApplicationController
     Setting.plugin_redmine_freee
   end
 
+  def sync_quotations?
+    plugin_settings['sync_quotations'] == '1'
+  end
+
+  def sync_invoices?
+    plugin_settings['sync_invoices'] == '1'
+  end
+
+  def quotation_sent_status_id
+    plugin_settings['quotation_sent_status'].to_i
+  end
+
+  def invoice_sent_status_id
+    plugin_settings['invoice_sent_status'].to_i
+  end
+
+  def invoice_paid_status_id
+    plugin_settings['invoice_paid_status'].to_i
+  end
+
   def client_id
     plugin_settings['client_id']
   end
