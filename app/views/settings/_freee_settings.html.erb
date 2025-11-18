@@ -1,3 +1,8 @@
+<% cred = FreeeCredential.first %>
+
+<h3>認証設定</h3>
+
+<% unless cred.present? %>
 <p>
   Client ID / Secret を入力、保存してから認証を開始してください
 </p>
@@ -21,15 +26,43 @@
 </p>
 
 <hr>
+<% end %>
+
 <!-- ========================================================= -->
 <!--  認証状態 -->
 <!-- ========================================================= -->
 
-<% cred = FreeeCredential.first %>
-
 <% if cred.present? %>
+<%
+  # freee API 接続確認（設定画面を開くたびに 1 回だけ実行）
+  begin
+    comps = FreeeApiClient.companies
+    if comps.present?
+      api_status  = :ok
+      api_message = "#{comps.size} 件の事業所を取得"
+    else
+      api_status  = :empty
+      api_message = "接続は成功したが、取得できる事業所がありません"
+    end
+  rescue => e
+    api_status  = :error
+    api_message = "freee API エラー: #{e.message}"
+  end
+%>
   <p><strong>認証状態：</strong> ✅ 認証済み</p>
-  <p>Access Token 有効期限：<%= cred.expires_at %></p>
+  <p><strong>freee API 接続テスト：</strong>
+    <% case api_status
+       when :ok %>
+      <span style="color: green;">● OK</span>（<%= api_message %>）
+    <% when :empty %>
+      <span style="color: orange;">● 接続 OK</span>（<%= api_message %>）
+    <% when :error %>
+      <span style="color: red;">● エラー</span>（<%= api_message %>）
+    <% else %>
+      <span>● 未確認</span>
+    <% end %>
+  </p>
+  <p><strong>Access Token 有効期限：</strong><%= cred.expires_at %></p>
   <p>
     <%= link_to "認証解除する",
           "/redmine_freee/auth/reset",
@@ -49,7 +82,7 @@
 <!--  見積書（QUOTATION） -->
 <!-- ========================================================= -->
 
-<h3>📄 見積書（Quotation）設定</h3>
+<h3>📄 見積書定</h3>
 
 <p>
   <label>
@@ -89,7 +122,7 @@
 <!--  請求書（INVOICE） -->
 <!-- ========================================================= -->
 
-<h3>🧾 請求書（Invoice）設定</h3>
+<h3>🧾 請求書設定</h3>
 
 <p>
   <label>
