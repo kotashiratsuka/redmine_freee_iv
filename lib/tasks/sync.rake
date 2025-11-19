@@ -24,36 +24,37 @@ def run_sync(dry_run:)
   sync_quotations      = plugin['sync_quotations'] == '1'
   sync_invoices        = plugin['sync_invoices']  == '1'
   sync_delivery_slips  = plugin['sync_delivery_slips']  == '1'
+  ignored_status_ids   = Array(plugin['ignored_status_ids']).map(&:to_i)
 
   apply_final_only     = plugin['apply_final_only'] == '1'
 
   # === 見積ステータス / テンプレート ===
-  quotation_sent_id   = plugin['quotation_sent_status'].to_i
-  quotation_unsent_id = plugin['quotation_unsent_status'].to_i
-  tpl_q_sent          = plugin['quotation_sent_comment']
-  tpl_q_unsent        = plugin['quotation_unsent_comment']
+  quotation_sent_id     = plugin['quotation_sent_status'].to_i
+  quotation_unsent_id   = plugin['quotation_unsent_status'].to_i
+  tpl_quotation_sent    = plugin['quotation_sent_comment']
+  tpl_quotation_unsent  = plugin['quotation_unsent_comment']
 
   # === 請求書ステータス / テンプレート ===
-  inv_sent_id   = plugin['invoice_sent_status'].to_i
-  inv_unsent_id = plugin['invoice_unsent_status'].to_i
-  inv_paid_id   = plugin['invoice_paid_status'].to_i
-  inv_unpaid_id = plugin['invoice_unpaid_status'].to_i
+  invoice_sent_id   = plugin['invoice_sent_status'].to_i
+  invoice_unsent_id = plugin['invoice_unsent_status'].to_i
+  invoice_paid_id   = plugin['invoice_paid_status'].to_i
+  invoice_unpaid_id = plugin['invoice_unpaid_status'].to_i
 
-  tpl_i_sent   = plugin['invoice_sent_comment']
-  tpl_i_unsent = plugin['invoice_unsent_comment']
-  tpl_i_paid   = plugin['invoice_paid_comment']
-  tpl_i_unpaid = plugin['invoice_unpaid_comment']
+  tpl_invoice_sent   = plugin['invoice_sent_comment']
+  tpl_invoice_unsent = plugin['invoice_unsent_comment']
+  tpl_invoice_paid   = plugin['invoice_paid_comment']
+  tpl_invoice_unpaid = plugin['invoice_unpaid_comment']
 
   # === 納品書ステータス / テンプレート ===
-  del_sent_id   = plugin['delivery_slip_sent_status'].to_i
-  del_unsent_id = plugin['delivery_slip_unsent_status'].to_i
-  del_paid_id   = plugin['delivery_slip_paid_status'].to_i
-  del_unpaid_id = plugin['delivery_slip_unpaid_status'].to_i
+  delivery_slip_sent_id   = plugin['delivery_slip_sent_status'].to_i
+  delivery_slip_unsent_id = plugin['delivery_slip_unsent_status'].to_i
+  delivery_slip_paid_id   = plugin['delivery_slip_paid_status'].to_i
+  delivery_slip_unpaid_id = plugin['delivery_slip_unpaid_status'].to_i
 
-  tpl_d_sent   = plugin['delivery_slip_sent_comment']
-  tpl_d_unsent = plugin['delivery_slip_unsent_comment']
-  tpl_d_paid   = plugin['delivery_slip_paid_comment']
-  tpl_d_unpaid = plugin['delivery_slip_unpaid_comment']
+  tpl_delivery_slip_sent   = plugin['delivery_slip_sent_comment']
+  tpl_delivery_slip_unsent = plugin['delivery_slip_unsent_comment']
+  tpl_delivery_slip_paid   = plugin['delivery_slip_paid_comment']
+  tpl_delivery_slip_unpaid = plugin['delivery_slip_unpaid_comment']
 
   # === 設定値（100,200,300,...,unlimited） ===
   raw_total = plugin['max_fetch_total']
@@ -84,10 +85,11 @@ def run_sync(dry_run:)
         max_total: max_total
       )
 
-      quotations.each do |q|
-        subject = q["subject"].to_s
-        status  = q["sending_status"]
-        amount  = q["total_amount"]
+      quotations.each do |quotation|
+        subject      = quotation["subject"].to_s
+        mail         = quotation["sending_status"]
+        amount       = quotation["total_amount"]
+        quotation_id = quotation["id"]
 
         # [#1234] → issue_id
         next unless subject =~ /\[#?(\d+)\]/
@@ -95,39 +97,68 @@ def run_sync(dry_run:)
         issue    = Issue.find_by(id: issue_id)
         next unless issue
 
+        if quotation["cancel_status"] == "canceled"
+          puts dry_run ?
+            "[freee][DRY][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)" :
+            "[freee][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)"
+          next
+        end
+
         amount_fmt    = ActiveSupport::NumberHelper.number_to_delimited(amount)
-        quotation_url = "https://invoice.secure.freee.co.jp/reports/quotations/#{q['id']}"
+        quotation_url = "https://invoice.secure.freee.co.jp/reports/quotations/#{quotation_id}"
 
         new_status_id =
-          case status
-          when "sent"   then quotation_sent_id
-          when "unsent" then quotation_unsent_id
-          else                0
+          if mail == "sent"
+            quotation_sent_id
+          elsif mail == "unsent"
+            quotation_unsent_id
+          else
+            puts "[freee][WARN] unknown quotations status mail=#{mail} → skip"
+            0
           end
 
         next_status =
           new_status_id.zero? ? "変更しない" :
             (IssueStatus.find_by(id: new_status_id)&.name || "不明")
 
-        if dry_run
-          puts "[freee][DRY quotation] ##{issue_id} status=#{status}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
+        current_status_id = issue.status_id
+
+        # --- ignore: 現在ステータスが対象 ---
+        if ignored_status_ids.include?(current_status_id)
+          label = IssueStatus.find_by(id: current_status_id)&.name || "ID=#{current_status_id}"
+          puts(dry_run ?
+            "[freee][DRY][IGNORE] ##{issue_id} current=#{label} (保護ステータス)" :
+            "[freee][IGNORE] ##{issue_id} current=#{label} (保護ステータス)"
+          )
           next
         end
+
+        if new_status_id.zero?
+          puts(dry_run ?
+            "[freee][DRY][SKIP] ##{issue_id} new_status_id=0 (変更しない)" :
+            "[freee][SKIP] ##{issue_id} new_status_id=0 (変更しない)"
+          )
+          next
+        end
+
+        puts "[freee][DRY quotation] ##{issue_id} mail=#{mail}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
+        next if dry_run
+
 
         # 0（変更しない）は候補にもしない
         next if new_status_id.zero?
 
         template =
-          case status
-          when "sent"   then tpl_q_sent
-          when "unsent" then tpl_q_unsent
+          case mail
+          when "sent"   then tpl_quotation_sent
+          when "unsent" then tpl_quotation_unsent
           else ""
           end
 
         vars = {
           amount: amount_fmt,
           url:    quotation_url,
-          status: status
+          mail:   mail
         }
 
         if apply_final_only
@@ -167,12 +198,12 @@ def run_sync(dry_run:)
         max_total: max_total
       )
 
-      invoices.each do |inv|
-        subject    = inv['subject'].to_s
-        mail       = inv['sending_status']
-        payment    = inv['payment_status']
-        amount     = inv['total_amount']
-        invoice_id = inv['id']
+      invoices.each do |invoice|
+        subject    = invoice['subject'].to_s
+        mail       = invoice['sending_status']
+        payment    = invoice['payment_status']
+        amount     = invoice['total_amount']
+        invoice_id = invoice['id']
 
         # subject から [#1234]
         next unless subject =~ /\[#?(\d+)\]/
@@ -180,18 +211,25 @@ def run_sync(dry_run:)
         issue    = Issue.find_by(id: issue_id)
         next unless issue
 
+        if invoice["cancel_status"] == "canceled"
+          puts dry_run ?
+            "[freee][DRY][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)" :
+            "[freee][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)"
+          next
+        end
+
         amount_fmt  = ActiveSupport::NumberHelper.number_to_delimited(amount)
         invoice_url = "https://invoice.secure.freee.co.jp/reports/invoices/#{invoice_id}"
 
         new_status_id =
           if payment == "settled"
-            inv_paid_id
+            invoice_paid_id
           elsif mail == "sent"
-            inv_sent_id
+            invoice_sent_id
           elsif mail == "unsent"
-            inv_unsent_id
+            invoice_unsent_id
           elsif payment == "unsettled"
-            inv_unpaid_id
+            invoice_unpaid_id
           else
             puts "[freee][WARN] unknown invoice status mail=#{mail}, payment=#{payment} → skip"
             0
@@ -201,23 +239,42 @@ def run_sync(dry_run:)
           new_status_id.zero? ? "変更しない" :
             (IssueStatus.find_by(id: new_status_id)&.name || "不明")
 
-        if dry_run
-          puts "[freee][DRY invoice] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
+        current_status_id = issue.status_id
+
+        # --- ignore: 現在ステータスが対象 ---
+        if ignored_status_ids.include?(current_status_id)
+          label = IssueStatus.find_by(id: current_status_id)&.name || "ID=#{current_status_id}"
+          puts(dry_run ?
+            "[freee][DRY][IGNORE] ##{issue_id} current=#{label} (無視ステータス)" :
+            "[freee][IGNORE] ##{issue_id} current=#{label} (無視ステータス)"
+          )
           next
         end
+
+        if new_status_id.zero?
+          puts(dry_run ?
+            "[freee][DRY][SKIP] ##{issue_id} new_status_id=0 (変更しない)" :
+            "[freee][SKIP] ##{issue_id} new_status_id=0 (変更しない)"
+          )
+          next
+        end
+
+        puts "[freee][DRY invoice] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
+        next if dry_run
+
 
         # 0（変更しない）は候補にもしない
         next if new_status_id.zero?
 
         template =
           if payment == "settled"
-            tpl_i_paid
+            tpl_invoice_paid
           elsif mail == "sent"
-            tpl_i_sent
+            tpl_invoice_sent
           elsif mail == "unsent"
-            tpl_i_unsent
+            tpl_invoice_unsent
           else
-            tpl_i_unpaid
+            tpl_invoice_unpaid
           end
 
         vars = {
@@ -264,12 +321,12 @@ def run_sync(dry_run:)
         max_total: max_total
       )
 
-      delivery_slips.each do |del|
-        subject          = del['subject'].to_s
-        mail             = del['sending_status']
-        payment          = del['payment_status']
-        amount           = del['total_amount']
-        delivery_slip_id = del['id']
+      delivery_slips.each do |delivery_slip|
+        subject          = delivery_slip['subject'].to_s
+        mail             = delivery_slip['sending_status']
+        payment          = delivery_slip['payment_status']
+        amount           = delivery_slip['total_amount']
+        delivery_slip_id = delivery_slip['id']
 
         # subject から [#1234]
         next unless subject =~ /\[#?(\d+)\]/
@@ -277,18 +334,25 @@ def run_sync(dry_run:)
         issue    = Issue.find_by(id: issue_id)
         next unless issue
 
+        if delivery_slip["cancel_status"] == "canceled"
+          puts dry_run ?
+            "[freee][DRY][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)" :
+            "[freee][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)"
+          next
+        end
+
         amount_fmt        = ActiveSupport::NumberHelper.number_to_delimited(amount)
         delivery_slip_url = "https://invoice.secure.freee.co.jp/reports/delivery_slips/#{delivery_slip_id}"
 
         new_status_id =
           if payment == "settled"
-            del_paid_id
+            delivery_slip_paid_id
           elsif mail == "sent"
-            del_sent_id
+            delivery_slip_sent_id
           elsif mail == "unsent"
-            del_unsent_id
+            delivery_slip_unsent_id
           elsif payment == "unsettled"
-            del_unpaid_id
+            delivery_slip_unpaid_id
           else
             puts "[freee][WARN] unknown delivery_slip status mail=#{mail}, payment=#{payment} → skip"
             0
@@ -298,23 +362,41 @@ def run_sync(dry_run:)
           new_status_id.zero? ? "変更しない" :
             (IssueStatus.find_by(id: new_status_id)&.name || "不明")
 
-        if dry_run
-          puts "[freee][DRY delivery_slip] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
+        current_status_id = issue.status_id
+
+        # --- ignore: 現在ステータスが対象 ---
+        if ignored_status_ids.include?(current_status_id)
+          label = IssueStatus.find_by(id: current_status_id)&.name || "ID=#{current_status_id}"
+          puts(dry_run ?
+            "[freee][DRY][IGNORE] ##{issue_id} current=#{label} (無視ステータス)" :
+            "[freee][IGNORE] ##{issue_id} current=#{label} (無視ステータス)"
+          )
           next
         end
+
+        if new_status_id.zero?
+          puts(dry_run ?
+            "[freee][DRY][SKIP] ##{issue_id} new_status_id=0 (変更しない)" :
+            "[freee][SKIP] ##{issue_id} new_status_id=0 (変更しない)"
+          )
+          next
+        end
+
+        puts "[freee][DRY delivery_slip] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
+        next if dry_run
 
         # 0（変更しない）は候補にもしない
         next if new_status_id.zero?
 
         template =
           if payment == "settled"
-            tpl_d_paid
+            tpl_delivery_slip_paid
           elsif mail == "sent"
-            tpl_d_sent
+            tpl_delivery_slip_sent
           elsif mail == "unsent"
-            tpl_d_unsent
+            tpl_delivery_slip_unsent
           else
-            tpl_d_unpaid
+            tpl_delivery_slip_unpaid
           end
 
         vars = {
@@ -354,31 +436,38 @@ def run_sync(dry_run:)
   # ==========================
   #   最終ステータスのみ反映
   # ==========================
-  if apply_final_only && !dry_run
-    updates.each do |issue_id, info|
-      score = info[:score]
-      next if score.nil? || score < 0
+  updates.each do |issue_id, info|
+    score = info[:score]
+    next if score.nil? || score < 0
 
-      issue = Issue.find_by(id: issue_id)
-      next unless issue
-
-      new_status_id = info[:new_status_id].to_i
-      next if new_status_id.zero?
-      next if issue.status_id == new_status_id
-
-      template    = info[:template]
-      vars        = info[:vars] || {}
+    # --- DRY の場合も同じ順番で出す ---
+    if dry_run
       next_status = info[:next_status] ||
-                    (IssueStatus.find_by(id: new_status_id)&.name || "不明")
+                    (IssueStatus.find_by(id: info[:new_status_id])&.name || "不明")
 
-      message = apply_template(template, vars)
-
-      puts "[freee][UPDATE final] ##{issue_id} → #{next_status}"
-
-      issue.init_journal(freee_update_user, message)
-      issue.status_id = new_status_id
-      issue.save!
+      puts "[freee][DRY final] ##{issue_id} → #{next_status}"
+      next
     end
+
+    issue = Issue.find_by(id: issue_id)
+    next unless issue
+
+    new_status_id = info[:new_status_id].to_i
+    next if new_status_id.zero?
+    next if issue.status_id == new_status_id
+
+    template    = info[:template]
+    vars        = info[:vars] || {}
+    next_status = info[:next_status] ||
+                  (IssueStatus.find_by(id: new_status_id)&.name || "不明")
+
+    message = apply_template(template, vars)
+
+    puts "[freee][UPDATE final] ##{issue_id} → #{next_status}"
+
+    issue.init_journal(freee_update_user, message)
+    issue.status_id = new_status_id
+    issue.save!
   end
 end
 

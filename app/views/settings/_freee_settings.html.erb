@@ -260,7 +260,36 @@
 </p>
 
 <p>
-  納品書 → 見積書 → 請求書 の順にステータスを評価し、最終のステータスのみを適用します（推奨）
+  見積書 → 請求書 → 納品書 の順にステータスを評価し、最終のステータスのみを適用します（推奨）
+</p>
+
+<hr>
+
+<p>
+  <label for="settings_ignored_status_ids">
+    無視するステータス
+  </label>
+</p>
+
+<%
+  selected_ids = Array(settings['ignored_status_ids']).map(&:to_i)
+%>
+
+<p>
+  <%= select_tag(
+        'settings[ignored_status_ids][]',
+        options_for_select(
+          IssueStatus.all.map { |s| [s.name, s.id] },
+          selected_ids
+        ),
+        multiple: true,
+        size: 6,
+        style: "width: 300px;"
+      ) %>
+</p>
+
+<p>
+  ここで選んだステータスのチケットは無視されます
 </p>
 
 <p>
