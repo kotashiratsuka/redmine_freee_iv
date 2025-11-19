@@ -21,14 +21,15 @@ end
 def run_sync(dry_run:)
   plugin = Setting.plugin_redmine_freee
 
-  sync_quotations = plugin['sync_quotations'] == '1'
-  sync_invoices   = plugin['sync_invoices']  == '1'
+  sync_quotations      = plugin['sync_quotations'] == '1'
+  sync_invoices        = plugin['sync_invoices']  == '1'
+  sync_delivery_slips  = plugin['sync_delivery_slips']  == '1'
 
   # === 見積ステータス / テンプレート ===
   quotation_sent_id   = plugin['quotation_sent_status'].to_i
   quotation_unsent_id = plugin['quotation_unsent_status'].to_i
   tpl_q_sent          = plugin['quotation_sent_comment']
-  tpl_q_unsent        = plugin['quotation_unssent_comment']
+  tpl_q_unsent        = plugin['quotation_unsent_comment']
 
   # === 請求書ステータス / テンプレート ===
   inv_sent_id   = plugin['invoice_sent_status'].to_i
@@ -40,6 +41,17 @@ def run_sync(dry_run:)
   tpl_i_unsent = plugin['invoice_unsent_comment']
   tpl_i_paid   = plugin['invoice_paid_comment']
   tpl_i_unpaid = plugin['invoice_unpaid_comment']
+
+  # === 納品書ステータス / テンプレート ===
+  del_sent_id   = plugin['delivery_slip_sent_status'].to_i
+  del_unsent_id = plugin['delivery_slip_unsent_status'].to_i
+  del_paid_id   = plugin['delivery_slip_paid_status'].to_i
+  del_unpaid_id = plugin['delivery_slip_unpaid_status'].to_i
+
+  tpl_d_sent   = plugin['delivery_slip_sent_comment']
+  tpl_d_unsent = plugin['delivery_slip_unsent_comment']
+  tpl_d_paid   = plugin['delivery_slip_paid_comment']
+  tpl_d_unpaid = plugin['delivery_slip_unpaid_comment']
 
   # === 設定値（100,200,300,...,unlimited） ===
   raw_total = plugin['max_fetch_total']
@@ -189,6 +201,86 @@ def run_sync(dry_run:)
           template,
           amount:  amount_fmt,
           url:     invoice_url,
+          mail:    mail,
+          payment: payment
+        )
+
+        puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
+
+        issue.init_journal(freee_update_user, message)
+        issue.status_id = new_status_id
+        issue.save!
+      end
+    end
+
+    # ==========================
+    #   納品書 (delivery_slips)
+    # ==========================
+    if sync_delivery_slips
+      delivery_slips = FreeeApiClient.get_all(
+        "/iv/delivery_slips",
+        company_id: company_id,
+        limit: 100,
+        max_total: max_total
+      )
+
+      delivery_slips.each do |del|
+        subject          = del['subject'].to_s
+        mail             = del['sending_status']
+        payment          = del['payment_status']
+        amount           = del['total_amount']
+        delivery_slip_id = del['id']
+
+        # subject から [#1234]
+        next unless subject =~ /\[#?(\d+)\]/
+        issue_id = Regexp.last_match(1).to_i
+        issue    = Issue.find_by(id: issue_id)
+        next unless issue
+
+        amount_fmt  = ActiveSupport::NumberHelper.number_to_delimited(amount)
+        delivery_slip_url = "https://invoice.secure.freee.co.jp/reports/delivery_slips/#{delivery_slip_id}"
+
+        new_status_id =
+          if payment == "settled"
+            del_paid_id
+          elsif mail == "sent"
+            del_sent_id
+          elsif mail == "unsent"
+            del_unsent_id
+          elsif payment == "unsettled"
+            del_unpaid_id
+          else
+            puts "[freee][WARN] unknown delivery_slip status mail=#{mail}, payment=#{payment} → skip"
+            0
+          end
+
+        next_status =
+          new_status_id.zero? ? "変更しない" :
+            (IssueStatus.find_by(id: new_status_id)&.name || "不明")
+
+        if dry_run
+          puts "[freee][DRY delivery_slip] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
+          next
+        end
+
+        next if new_status_id.zero?
+        next if issue.status_id == new_status_id
+
+        template =
+          if payment == "settled"
+            tpl_d_paid
+          elsif mail == "sent"
+            tpl_d_sent
+          elsif mail == "unsent"
+            tpl_d_unsent
+          else
+            tpl_d_unpaid
+          end
+
+        message = apply_template(
+          template,
+          amount:  amount_fmt,
+          url:     delivery_slip_url,
           mail:    mail,
           payment: payment
         )

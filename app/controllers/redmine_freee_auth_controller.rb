@@ -16,6 +16,10 @@ class RedmineFreeeAuthController < ApplicationController
     plugin_settings['sync_invoices'] == '1'
   end
 
+  def sync_delivery_slips?
+    plugin_settings['sync_delivery_slips'] == '1'
+  end
+
   def quotation_sent_status_id
     plugin_settings['quotation_sent_status'].to_i
   end
