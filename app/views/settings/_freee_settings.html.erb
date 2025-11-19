@@ -243,6 +243,18 @@
 <h3>🔄 同期ルール</h3>
 
 <p>
+  <label>
+    <%= check_box_tag 'settings[apply_final_only]', '1',
+          settings['apply_final_only'] == '1' %>
+    最終ステータスのみに反映
+  </label>
+</p>
+
+<p>
+  納品書 → 見積書 → 請求書 の順にステータスを評価し、最終のステータスのみを適用します（推奨）
+</p>
+
+<p>
   <label for="settings_max_fetch_total">最新からの最大取得件数</label>
   <% options = [
     [100],

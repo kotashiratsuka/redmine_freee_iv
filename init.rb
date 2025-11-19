@@ -42,6 +42,7 @@ Redmine::Plugin.register :redmine_freee do
   'delivery_slip_paid_comment' => "💰 freee で {amount} 円の入金が確認されました\nURL: {url}",
 
   # --- 最大取得件数 ---
+  'apply_final_only' => '1',
   'max_fetch_total' => '100'
   }, partial: 'settings/freee_settings'
 end

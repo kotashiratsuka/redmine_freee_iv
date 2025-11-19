@@ -25,6 +25,8 @@ def run_sync(dry_run:)
   sync_invoices        = plugin['sync_invoices']  == '1'
   sync_delivery_slips  = plugin['sync_delivery_slips']  == '1'
 
+  apply_final_only     = plugin['apply_final_only'] == '1'
+
   # === 見積ステータス / テンプレート ===
   quotation_sent_id   = plugin['quotation_sent_status'].to_i
   quotation_unsent_id = plugin['quotation_unsent_status'].to_i
@@ -63,6 +65,10 @@ def run_sync(dry_run:)
   #   会社ループ
   # ===============================
   companies = FreeeApiClient.companies
+
+  # issue_id ごとの最終候補バッファ
+  # { issue_id => { score:, new_status_id:, template:, vars:, next_status: } }
+  updates = Hash.new { |h, k| h[k] = { score: -1 } }
 
   companies.each do |comp|
     company_id = comp["id"]
@@ -108,8 +114,8 @@ def run_sync(dry_run:)
           next
         end
 
+        # 0（変更しない）は候補にもしない
         next if new_status_id.zero?
-        next if issue.status_id == new_status_id
 
         template =
           case status
@@ -118,18 +124,35 @@ def run_sync(dry_run:)
           else ""
           end
 
-        message = apply_template(
-          template,
+        vars = {
           amount: amount_fmt,
           url:    quotation_url,
           status: status
-        )
+        }
 
-        puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
+        if apply_final_only
+          score = 1  # quotation の優先度
+          cand  = updates[issue_id]
+          if cand[:score].nil? || score >= cand[:score].to_i
+            updates[issue_id] = {
+              score:         score,
+              new_status_id: new_status_id,
+              template:      template,
+              vars:          vars,
+              next_status:   next_status
+            }
+          end
+        else
+          next if issue.status_id == new_status_id
 
-        issue.init_journal(freee_update_user, message)
-        issue.status_id = new_status_id
-        issue.save!
+          message = apply_template(template, vars)
+
+          puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
+
+          issue.init_journal(freee_update_user, message)
+          issue.status_id = new_status_id
+          issue.save!
+        end
       end
     end
 
@@ -183,8 +206,8 @@ def run_sync(dry_run:)
           next
         end
 
+        # 0（変更しない）は候補にもしない
         next if new_status_id.zero?
-        next if issue.status_id == new_status_id
 
         template =
           if payment == "settled"
@@ -197,19 +220,36 @@ def run_sync(dry_run:)
             tpl_i_unpaid
           end
 
-        message = apply_template(
-          template,
+        vars = {
           amount:  amount_fmt,
           url:     invoice_url,
           mail:    mail,
           payment: payment
-        )
+        }
 
-        puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
+        if apply_final_only
+          score = 0  # invoice の優先度
+          cand  = updates[issue_id]
+          if cand[:score].nil? || score >= cand[:score].to_i
+            updates[issue_id] = {
+              score:         score,
+              new_status_id: new_status_id,
+              template:      template,
+              vars:          vars,
+              next_status:   next_status
+            }
+          end
+        else
+          next if issue.status_id == new_status_id
 
-        issue.init_journal(freee_update_user, message)
-        issue.status_id = new_status_id
-        issue.save!
+          message = apply_template(template, vars)
+
+          puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
+
+          issue.init_journal(freee_update_user, message)
+          issue.status_id = new_status_id
+          issue.save!
+        end
       end
     end
 
@@ -237,7 +277,7 @@ def run_sync(dry_run:)
         issue    = Issue.find_by(id: issue_id)
         next unless issue
 
-        amount_fmt  = ActiveSupport::NumberHelper.number_to_delimited(amount)
+        amount_fmt        = ActiveSupport::NumberHelper.number_to_delimited(amount)
         delivery_slip_url = "https://invoice.secure.freee.co.jp/reports/delivery_slips/#{delivery_slip_id}"
 
         new_status_id =
@@ -263,8 +303,8 @@ def run_sync(dry_run:)
           next
         end
 
+        # 0（変更しない）は候補にもしない
         next if new_status_id.zero?
-        next if issue.status_id == new_status_id
 
         template =
           if payment == "settled"
@@ -277,24 +317,69 @@ def run_sync(dry_run:)
             tpl_d_unpaid
           end
 
-        message = apply_template(
-          template,
+        vars = {
           amount:  amount_fmt,
           url:     delivery_slip_url,
           mail:    mail,
           payment: payment
-        )
+        }
 
-        puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
+        if apply_final_only
+          score = 2  # delivery_slip の優先度（最強）
+          cand  = updates[issue_id]
+          if cand[:score].nil? || score >= cand[:score].to_i
+            updates[issue_id] = {
+              score:         score,
+              new_status_id: new_status_id,
+              template:      template,
+              vars:          vars,
+              next_status:   next_status
+            }
+          end
+        else
+          next if issue.status_id == new_status_id
 
-        issue.init_journal(freee_update_user, message)
-        issue.status_id = new_status_id
-        issue.save!
+          message = apply_template(template, vars)
+
+          puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
+
+          issue.init_journal(freee_update_user, message)
+          issue.status_id = new_status_id
+          issue.save!
+        end
       end
     end
   end
 
-  puts dry_run ? "[freee] DRY-RUN finished." : "[freee] sync finished."
+  # ==========================
+  #   最終ステータスのみ反映
+  # ==========================
+  if apply_final_only && !dry_run
+    updates.each do |issue_id, info|
+      score = info[:score]
+      next if score.nil? || score < 0
+
+      issue = Issue.find_by(id: issue_id)
+      next unless issue
+
+      new_status_id = info[:new_status_id].to_i
+      next if new_status_id.zero?
+      next if issue.status_id == new_status_id
+
+      template    = info[:template]
+      vars        = info[:vars] || {}
+      next_status = info[:next_status] ||
+                    (IssueStatus.find_by(id: new_status_id)&.name || "不明")
+
+      message = apply_template(template, vars)
+
+      puts "[freee][UPDATE final] ##{issue_id} → #{next_status}"
+
+      issue.init_journal(freee_update_user, message)
+      issue.status_id = new_status_id
+      issue.save!
+    end
+  end
 end
 
 # =====================================================================
