@@ -92,8 +92,8 @@ class FreeeApiClient
     # ====== OAuth クライアント ======
     def oauth_client
       OAuth2::Client.new(
-        Setting.plugin_redmine_freee['client_id'],
-        Setting.plugin_redmine_freee['client_secret'],
+        Setting.plugin_redmine_freee_iv['client_id'],
+        Setting.plugin_redmine_freee_iv['client_secret'],
         site: API_BASE,
         authorize_url: AUTHORIZE_URL,
         token_url: TOKEN_URL

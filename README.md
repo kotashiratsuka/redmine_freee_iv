@@ -1,4 +1,4 @@
-# Redmine freee Plugin
+# Redmine freee Iv Plugin
 
 Redmine のチケット番号（Issue ID）と freee の納品書、見積書、請求書ステータスを自動連携し、
 freee 側の「件名（subject）」に含まれる **[#1234]** を Redmine Issue ID として扱います
@@ -147,7 +147,7 @@ URL: {url}
 ## 1. プラグイン配置
 ```
 cd /home/redmine/plugins
-git clone git@github.com:USERNAME/redmine_freee.git
+git clone https://github.com/kotashiratsuka/redmine_freee_iv.git
 ```
 
 ## 2. Gem インストール
@@ -179,7 +179,7 @@ https://app.secure.freee.co.jp/developers/applications/new
 
 Callback URL：
 ```
-https://YOUR_HOST/redmine_freee/auth/callback
+https://YOUR_HOST/redmine_freee_iv/auth/callback
 ```
 
 ## 2. Redmine 設定で OAuth を実行
@@ -191,7 +191,7 @@ https://YOUR_HOST/redmine_freee/auth/callback
 # 🧪 DRY-RUN（動作確認用）
 
 ```
-RAILS_ENV=production bundle exec rake freee:dry_run
+RAILS_ENV=production bundle exec rake freee_iv:dry_run
 ```
 
 - freee API から取得
@@ -203,7 +203,7 @@ RAILS_ENV=production bundle exec rake freee:dry_run
 # 🔄 同期
 
 ```
-RAILS_ENV=production bundle exec rake freee:sync
+RAILS_ENV=production bundle exec rake freee_iv:sync
 ```
 
 - ステータス更新
@@ -215,7 +215,7 @@ RAILS_ENV=production bundle exec rake freee:sync
 # 📅 Cron 設定例（平日 9,12,15,18,21 時）
 
 ```
-0 9,12,15,18,21 * * 1-5 RAILS_ENV=production bundle exec rake freee:sync
+0 9,12,15,18,21 * * 1-5 RAILS_ENV=production bundle exec rake freee_iv:sync
 ```
 
 ------------------------------------------------------------
@@ -223,9 +223,9 @@ RAILS_ENV=production bundle exec rake freee:sync
 # 📂 ディレクトリ構成
 
 ```
-redmine_freee/
+redmine_freee_iv/
   app/
-    controllers/redmine_freee_auth_controller.rb
+    controllers/redmine_freee_iv_auth_controller.rb
     models/freee_credential.rb
     services/freee_api_client.rb
     views/settings/_freee_settings.html.erb

@@ -65,14 +65,14 @@
   <p><strong>Access Token 有効期限：</strong><%= cred.expires_at %></p>
   <p>
     <%= link_to "認証解除する",
-          "/redmine_freee/auth/reset",
+          "/redmine_freee_iv/auth/reset",
           method: :post,
           data: { confirm: "認証を解除しますか？" } %>
   </p>
 <% else %>
   <p><strong>認証状態：</strong> ❌ 未認証</p>
   <p>
-    <%= link_to "▶ 認証を開始する", "/redmine_freee/auth/start" %>
+    <%= link_to "▶ 認証を開始する", "/redmine_freee_iv/auth/start" %>
   </p>
 <% end %>
 

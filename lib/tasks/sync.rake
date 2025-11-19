@@ -1,9 +1,9 @@
-# plugins/redmine_freee/lib/tasks/sync.rake
+# plugins/redmine_freee_iv/lib/tasks/sync.rake
 require "active_support/number_helper"
 
 # ===== コメント投稿ユーザー =====
 def freee_update_user
-  uid = Setting.plugin_redmine_freee['user_id'].presence || 1
+  uid = Setting.plugin_redmine_freee_iv['user_id'].presence || 1
   User.find(uid)
 end
 
@@ -19,7 +19,7 @@ end
 #  共通ロジック本体（DRY-RUN / SYNC を統合）
 # =====================================================================
 def run_sync(dry_run:)
-  plugin = Setting.plugin_redmine_freee
+  plugin = Setting.plugin_redmine_freee_iv
 
   sync_quotations      = plugin['sync_quotations'] == '1'
   sync_invoices        = plugin['sync_invoices']  == '1'
@@ -385,7 +385,7 @@ end
 # =====================================================================
 # TASK 定義
 # =====================================================================
-namespace :freee do
+namespace :freee_iv do
   desc 'freee 見積・請求ステータス DRY-RUN'
   task dry_run: :environment do
     run_sync(dry_run: true)

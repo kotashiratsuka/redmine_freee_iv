@@ -1,11 +1,11 @@
-class RedmineFreeeAuthController < ApplicationController
+class RedmineFreeeIvAuthController < ApplicationController
   require 'oauth2'
 
   #
   # === プラグイン設定ヘルパー
   #
   def plugin_settings
-    Setting.plugin_redmine_freee
+    Setting.plugin_redmine_freee_iv
   end
 
   def sync_quotations?
@@ -47,12 +47,12 @@ class RedmineFreeeAuthController < ApplicationController
 
   #
   # === 動的 REDIRECT_URI
-  # https + ドメイン + /redmine_freee/auth/callback
+  # https + ドメイン + /redmine_freee_iv/auth/callback
   #
   def redirect_uri
     URI.join(
       "#{request.protocol}#{request.host_with_port}",
-      redmine_freee_auth_callback_path
+      redmine_freee_iv_auth_callback_path
     ).to_s
   end
 
@@ -110,13 +110,13 @@ class RedmineFreeeAuthController < ApplicationController
       refresh_token: token.refresh_token,
       expires_at:    Time.at(token.expires_at)
     )
-    redirect_to "/settings/plugin/redmine_freee"
+    redirect_to "/settings/plugin/redmine_freee_iv"
   end
 
   def reset
     FreeeCredential.delete_all
     flash[:notice] = "freee の認証を解除しました。"
-    redirect_to "/settings/plugin/redmine_freee"
+    redirect_to "/settings/plugin/redmine_freee_iv"
   end
 
 end
