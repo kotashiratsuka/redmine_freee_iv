@@ -133,6 +133,7 @@ def run_sync(dry_run:)
           next
         end
 
+        # --- 0 = 変更しない ---
         if new_status_id.zero?
           puts(dry_run ?
             "[freee][DRY][SKIP] ##{issue_id} new_status_id=0 (変更しない)" :
@@ -141,13 +142,7 @@ def run_sync(dry_run:)
           next
         end
 
-        puts "[freee][DRY quotation] ##{issue_id} mail=#{mail}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
-        next if dry_run
-
-
-        # 0（変更しない）は候補にもしない
-        next if new_status_id.zero?
-
+        # --- コメントテンプレートと埋め込み変数 ---
         template =
           case mail
           when "sent"   then tpl_quotation_sent
@@ -161,6 +156,7 @@ def run_sync(dry_run:)
           mail:   mail
         }
 
+        # --- 最終ステータスのみモード: 候補を積む（DRY/SYNC 共通）---
         if apply_final_only
           score = 1  # quotation の優先度
           cand  = updates[issue_id]
@@ -173,20 +169,34 @@ def run_sync(dry_run:)
               next_status:   next_status
             }
           end
-        else
-          next if issue.status_id == new_status_id
-
-          message = apply_template(template, vars)
-
-          puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
-
-          issue.init_journal(freee_update_user, message)
-          issue.status_id = new_status_id
-          issue.save!
         end
+
+        # --- 個別ログ出力（DRY / SYNC 共通）---
+        tag = dry_run ? "DRY" : "SYNC"
+        puts "[freee][#{tag} quotation] ##{issue_id} mail=#{mail}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
+
+        # --- DRY-RUN の場合はここまで（final でまとめて出すため updates は既に埋まっている）---
+        if dry_run
+          next
+        end
+
+        # --- apply_final_only=true のときはここでは更新しない（最後にまとめて更新）---
+        if apply_final_only
+          next
+        end
+
+        # --- apply_final_only=false: 従来通りその場で更新 ---
+        next if issue.status_id == new_status_id
+
+        message = apply_template(template, vars)
+
+        puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
+
+        issue.init_journal(freee_update_user, message)
+        issue.status_id = new_status_id
+        issue.save!
       end
     end
-
     # ==========================
     #   請求書 (invoices)
     # ==========================
@@ -251,6 +261,7 @@ def run_sync(dry_run:)
           next
         end
 
+        # --- 0 = 変更しない ---
         if new_status_id.zero?
           puts(dry_run ?
             "[freee][DRY][SKIP] ##{issue_id} new_status_id=0 (変更しない)" :
@@ -259,13 +270,7 @@ def run_sync(dry_run:)
           next
         end
 
-        puts "[freee][DRY invoice] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
-        next if dry_run
-
-
-        # 0（変更しない）は候補にもしない
-        next if new_status_id.zero?
-
+        # --- コメントテンプレートと埋め込み変数 ---
         template =
           if payment == "settled"
             tpl_invoice_paid
@@ -284,6 +289,7 @@ def run_sync(dry_run:)
           payment: payment
         }
 
+        # --- 最終ステータスのみモード: 候補を積む（DRY/SYNC 共通）---
         if apply_final_only
           score = 0  # invoice の優先度
           cand  = updates[issue_id]
@@ -296,17 +302,32 @@ def run_sync(dry_run:)
               next_status:   next_status
             }
           end
-        else
-          next if issue.status_id == new_status_id
-
-          message = apply_template(template, vars)
-
-          puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
-
-          issue.init_journal(freee_update_user, message)
-          issue.status_id = new_status_id
-          issue.save!
         end
+
+        # --- 個別ログ出力 ---
+        tag = dry_run ? "DRY" : "SYNC"
+        puts "[freee][#{tag} invoice] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
+
+        # --- DRY の場合はここまで ---
+        if dry_run
+          next
+        end
+
+        # --- apply_final_only=true のときはここでは更新しない ---
+        if apply_final_only
+          next
+        end
+
+        # --- apply_final_only=false: 従来どおり即時更新 ---
+        next if issue.status_id == new_status_id
+
+        message = apply_template(template, vars)
+
+        puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
+
+        issue.init_journal(freee_update_user, message)
+        issue.status_id = new_status_id
+        issue.save!
       end
     end
 
@@ -374,6 +395,7 @@ def run_sync(dry_run:)
           next
         end
 
+        # --- 0 = 変更しない ---
         if new_status_id.zero?
           puts(dry_run ?
             "[freee][DRY][SKIP] ##{issue_id} new_status_id=0 (変更しない)" :
@@ -382,12 +404,7 @@ def run_sync(dry_run:)
           next
         end
 
-        puts "[freee][DRY delivery_slip] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
-        next if dry_run
-
-        # 0（変更しない）は候補にもしない
-        next if new_status_id.zero?
-
+        # --- コメントテンプレートと埋め込み変数 ---
         template =
           if payment == "settled"
             tpl_delivery_slip_paid
@@ -406,6 +423,7 @@ def run_sync(dry_run:)
           payment: payment
         }
 
+        # --- 最終ステータスのみモード: 候補を積む（DRY/SYNC 共通）---
         if apply_final_only
           score = 2  # delivery_slip の優先度（最強）
           cand  = updates[issue_id]
@@ -418,17 +436,32 @@ def run_sync(dry_run:)
               next_status:   next_status
             }
           end
-        else
-          next if issue.status_id == new_status_id
-
-          message = apply_template(template, vars)
-
-          puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
-
-          issue.init_journal(freee_update_user, message)
-          issue.status_id = new_status_id
-          issue.save!
         end
+
+        # --- 個別ログ出力 ---
+        tag = dry_run ? "DRY" : "SYNC"
+        puts "[freee][#{tag} delivery_slip] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
+
+        # --- DRY の場合はここまで ---
+        if dry_run
+          next
+        end
+
+        # --- apply_final_only=true のときはここでは更新しない ---
+        if apply_final_only
+          next
+        end
+
+        # --- apply_final_only=false: 従来どおり即時更新 ---
+        next if issue.status_id == new_status_id
+
+        message = apply_template(template, vars)
+
+        puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
+
+        issue.init_journal(freee_update_user, message)
+        issue.status_id = new_status_id
+        issue.save!
       end
     end
   end
