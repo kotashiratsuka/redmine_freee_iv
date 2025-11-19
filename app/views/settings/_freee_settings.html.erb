@@ -82,39 +82,42 @@
 <!--  見積書（QUOTATION） -->
 <!-- ========================================================= -->
 
-<h3>📄 見積書定</h3>
+<h3>📄 見積書設定 </h3>
 
 <p>
   <label>
     <%= check_box_tag 'settings[sync_quotations]', '1',
-          settings['sync_quotations'] == '1' %>
+          settings['sync_quotations'] == '1',
+          id: 'sync_quotations' %>
     見積書を同期する
   </label>
 </p>
 
-<p>
-  見積書が <strong>送付済み (sent)</strong> の時のステータス：
-  <%= select_tag 'settings[quotation_sent_status]',
-        options_for_select(
-          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
-          selected: settings['quotation_sent_status'].to_i
-        )
-  %>
-  <label>見積書（送付済）のコメントテンプレート：</label><br>
-  <textarea name="settings[quotation_sent_comment]" rows="3" style="width: 98%;"><%= settings['quotation_sent_comment'] %></textarea>
-</p>
+<div id="quotation_settings" style="display: none;">
+  <p>
+    見積書が <strong>送付済み (sent)</strong> の時のステータス：
+    <%= select_tag 'settings[quotation_sent_status]',
+          options_for_select(
+            [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+            selected: settings['quotation_sent_status'].to_i
+          )
+    %>
+    <label id="quotation_sent_label">見積書（送付済）のコメントテンプレート：</label><br>
+    <textarea id="quotation_sent_comment" name="settings[quotation_sent_comment]" rows="3" style="width: 98%;"><%= settings['quotation_sent_comment'] %></textarea>
+  </p>
 
-<p>
-  見積書が <strong>未送付 (unsent)</strong> の時のステータス：
-  <%= select_tag 'settings[quotation_unsent_status]',
-        options_for_select(
-          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
-          selected: settings['quotation_unsent_status'].to_i
-        )
-  %>
-  <label>見積書（未送付）のコメントテンプレート：</label><br>
-  <textarea name="settings[quotation_unsent_comment]" rows="3" style="width: 98%;"><%= settings['quotation_unsent_comment'] %></textarea>
-</p>
+  <p>
+    見積書が <strong>未送付 (unsent)</strong> の時のステータス：
+    <%= select_tag 'settings[quotation_unsent_status]',
+          options_for_select(
+            [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+            selected: settings['quotation_unsent_status'].to_i
+          )
+    %>
+    <label id="quotation_unsent_label">見積書（未送付）のコメントテンプレート：</label><br>
+    <textarea id="quotation_unsent_comment" name="settings[quotation_unsent_comment]" rows="3" style="width: 98%;"><%= settings['quotation_unsent_comment'] %></textarea>
+  </p>
+</div>
 
 <hr>
 
@@ -127,11 +130,13 @@
 <p>
   <label>
     <%= check_box_tag 'settings[sync_invoices]', '1',
-          settings['sync_invoices'] == '1' %>
+          settings['sync_invoices'] == '1',
+          id: 'sync_invoices' %>
     請求書を同期する
   </label>
 </p>
 
+<div id="invoice_settings" style="display: none;">
 <p>
   請求書が <strong>送付済み (sent)</strong> の時のステータス：
   <%= select_tag 'settings[invoice_sent_status]',
@@ -140,8 +145,8 @@
           selected: settings['invoice_sent_status'].to_i
         )
   %>
-  <label>請求書（送付済）のコメントテンプレート：</label><br>
-  <textarea name="settings[invoice_sent_comment]" rows="3" style="width: 98%;"><%= settings['invoice_sent_comment'] %></textarea>
+  <label id="invoice_sent_label">請求書（送付済）のコメントテンプレート：</label><br>
+  <textarea id="invoice_sent_comment" name="settings[invoice_sent_comment]" rows="3" style="width: 98%;"><%= settings['invoice_sent_comment'] %></textarea>
 </p>
 
 <p>
@@ -152,8 +157,8 @@
           selected: settings['invoice_unsent_status'].to_i
         )
   %>
-  <label>請求書（未送付）のコメントテンプレート：</label><br>
-  <textarea name="settings[invoice_unsent_comment]" rows="3" style="width: 98%;"><%= settings['invoice_unsent_comment'] %></textarea>
+  <label id="invoice_unsent_label">請求書（未送付）のコメントテンプレート：</label><br>
+  <textarea id="invoice_unsent_comment" name="settings[invoice_unsent_comment]" rows="3" style="width: 98%;"><%= settings['invoice_unsent_comment'] %></textarea>
 </p>
 
 <p>
@@ -164,8 +169,8 @@
           selected: settings['invoice_paid_status'].to_i
         )
   %>
-  <label>請求書（入金済み）のコメントテンプレート：</label><br>
-  <textarea name="settings[invoice_paid_comment]" rows="3" style="width: 98%;"><%= settings['invoice_paid_comment'] %></textarea>
+  <label id="invoice_paid_label">請求書（入金済み）のコメントテンプレート：</label><br>
+  <textarea id="invoice_paid_comment" name="settings[invoice_paid_comment]" rows="3" style="width: 98%;"><%= settings['invoice_paid_comment'] %></textarea>
   請求書が <strong>入金待ち (unsettled)</strong> の時のステータス：
   <%= select_tag 'settings[invoice_unpaid_status]',
         options_for_select(
@@ -173,9 +178,10 @@
           selected: settings['invoice_unpaid_status'].to_i
         )
   %>
-  <label>請求書（入金待ち）のコメントテンプレート：</label><br>
-  <textarea name="settings[invoice_unpaid_comment]" rows="3" style="width: 98%;"><%= settings['invoice_unpaid_comment'] %></textarea>
+  <label id="invoice_unpaid_label">請求書（入金待ち）のコメントテンプレート：</label><br>
+  <textarea id="invoice_unpaid_comment" name="settingss[invoice_unpaid_comment]" rows="3" style="width: 98%;"><%= settings['invoice_unpaid_comment'] %></textarea>
 </p>
+</div>
 
 <hr>
 
@@ -188,55 +194,58 @@
 <p>
   <label>
     <%= check_box_tag 'settings[sync_delivery_slips]', '1',
-          settings['sync_delivery_slips'] == '1' %>
+          settings['sync_delivery_slips'] == '1',
+          id: 'sync_delivery_slips' %>
     納品書を同期する
   </label>
 </p>
 
-<p>
-  納品書が <strong>送付済み (sent)</strong> の時のステータス：
-  <%= select_tag 'settings[delivery_slip_sent_status]',
-        options_for_select(
-          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
-          selected: settings['delivery_slip_sent_status'].to_i
-        )
-  %>
-  <label>納品書（送付済）のコメントテンプレート：</label><br>
-  <textarea name="settings[delivery_slip_sent_comment]" rows="3" style="width: 98%;"><%= settings['delivery_slip_sent_comment'] %></textarea>
-</p>
+<div id="delivery_settings" style="display: none;">
+  <p>
+    納品書が <strong>送付済み (sent)</strong> の時のステータス：
+    <%= select_tag 'settings[delivery_slip_sent_status]',
+          options_for_select(
+            [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+            selected: settings['delivery_slip_sent_status'].to_i
+          )
+    %>
+    <label id="delivery_slip_sent_label">納品書（送付済）のコメントテンプレート：</label><br>
+    <textarea id="delivery_slip_sent_comment" name="settings[delivery_slip_sent_comment]" rows="3" style="width: 98%;"><%= settings['delivery_slip_sent_comment'] %></textarea>
+  </p>
 
-<p>
-  納品書が <strong>未送付 (unsent)</strong> の時のステータス：
-  <%= select_tag 'settings[delivery_slip_unsent_status]',
-        options_for_select(
-          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
-          selected: settings['delivery_slip_unsent_status'].to_i
-        )
-  %>
-  <label>納品書（未送付）のコメントテンプレート：</label><br>
-  <textarea name="settings[delivery_slip_unsent_comment]" rows="3" style="width: 98%;"><%= settings['delivery_slip_unsent_comment'] %></textarea>
-</p>
+  <p>
+    納品書が <strong>未送付 (unsent)</strong> の時のステータス：
+    <%= select_tag 'settings[delivery_slip_unsent_status]',
+          options_for_select(
+            [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+            selected: settings['delivery_slip_unsent_status'].to_i
+          )
+    %>
+    <label id="delivery_slip_unsent_label">納品書（未送付）のコメントテンプレート：</label><br>
+    <textarea id="delivery_slip_unsent_comment" name="settings[delivery_slip_unsent_comment]" rows="3" style="width: 98%;"><%= settings['delivery_slip_unsent_comment'] %></textarea>
+  </p>
 
-<p>
-  納品書が <strong>入金済み (settled)</strong> の時のステータス：
-  <%= select_tag 'settings[delivery_slip_paid_status]',
-        options_for_select(
-          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
-          selected: settings['delivery_slip_paid_status'].to_i
-        )
-  %>
-  <label>納品書（入金済み）のコメントテンプレート：</label><br>
-  <textarea name="settings[delivery_slip_paid_comment]" rows="3" style="width: 98%;"><%= settings['delivery_slip_paid_comment'] %></textarea>
-  納品書が <strong>入金待ち (unsettled)</strong> の時のステータス：
-  <%= select_tag 'settings[delivery_slip_unpaid_status]',
-        options_for_select(
-          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
-          selected: settings['delivery_slip_unpaid_status'].to_i
-        )
-  %>
-  <label>納品書（入金待ち）のコメントテンプレート：</label><br>
-  <textarea name="settings[delivery_slip_unpaid_comment]" rows="3" style="width: 98%;"><%= settings['delivery_slip_unpaid_comment'] %></textarea>
-</p>
+  <p>
+    納品書が <strong>入金済み (settled)</strong> の時のステータス：
+    <%= select_tag 'settings[delivery_slip_paid_status]',
+          options_for_select(
+            [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+            selected: settings['delivery_slip_paid_status'].to_i
+          )
+    %>
+    <label id="delivery_slip_paid_label">納品書（入金済み）のコメントテンプレート：</label><br>
+    <textarea id="delivery_slip_paid_comment" name="settings[delivery_slip_paid_comment]" rows="3" style="width: 98%;"><%= settings['delivery_slip_paid_comment'] %></textarea>
+    納品書が <strong>入金待ち (unsettled)</strong> の時のステータス：
+    <%= select_tag 'settings[delivery_slip_unpaid_status]',
+          options_for_select(
+            [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+            selected: settings['delivery_slip_unpaid_status'].to_i
+          )
+    %>
+    <label id="delivery_slip_unpaid_label">納品書（入金待ち）のコメントテンプレート：</label><br>
+    <textarea id="delivery_slip_unpaid_comment" name="settings[delivery_slip_unpaid_comment]" rows="3" style="width: 98%;"><%= settings['delivery_slip_unpaid_comment'] %></textarea>
+  </p>
+</div>
 
 <hr>
 
@@ -293,3 +302,77 @@
 <p>
   このユーザーとして Issue のコメントおよびステータス更新が実行されます。
 </p>
+
+<script>
+$(function() {
+
+  // ===========================
+  //  同期チェックボックスの ON/OFF
+  // ===========================
+
+  function toggleBlock(check, block) {
+    if ($(check).prop("checked")) {
+      $(block).show();
+    } else {
+      $(block).hide();
+    }
+  }
+
+  // 初期反映
+  toggleBlock("#sync_quotations", "#quotation_settings");
+  toggleBlock("#sync_invoices", "#invoice_settings");
+  toggleBlock("#sync_delivery_slips", "#delivery_settings");
+
+  // チェック変更時
+  $("#sync_quotations").on("change", function() {
+    toggleBlock("#sync_quotations", "#quotation_settings");
+  });
+  $("#sync_invoices").on("change", function() {
+    toggleBlock("#sync_invoices", "#invoice_settings");
+  });
+  $("#sync_delivery_slips").on("change", function() {
+    toggleBlock("#sync_delivery_slips", "#delivery_settings");
+  });
+
+  // ===========================
+  //  「変更しない」選択時にコメントを非表示
+  // ===========================
+
+  const map = {
+    "settings[quotation_sent_status]":     ["#quotation_sent_label", "#quotation_sent_comment"],
+    "settings[quotation_unsent_status]":   ["#quotation_unsent_label", "#quotation_unsent_comment"],
+    "settings[invoice_sent_status]":       ["#invoice_sent_label", "#invoice_sent_comment"],
+    "settings[invoice_unsent_status]":     ["#invoice_unsent_label", "#invoice_unsent_comment"],
+    "settings[invoice_paid_status]":       ["#invoice_paid_label", "#invoice_paid_comment"],
+    "settings[invoice_unpaid_status]":     ["#invoice_unpaid_label", "#invoice_unpaid_comment"],
+    "settings[delivery_slip_sent_status]": ["#delivery_slip_sent_label", "#delivery_slip_sent_comment"],
+    "settings[delivery_slip_unsent_status]":["#delivery_slip_unsent_label", "#delivery_slip_unsent_comment"],
+    "settings[delivery_slip_paid_status]": ["#delivery_slip_paid_label", "#delivery_slip_paid_comment"],
+    "settings[delivery_slip_unpaid_status]":["#delivery_slip_unpaid_label", "#delivery_slip_unpaid_comment"]
+  };
+
+  function syncVisibility(selectEl) {
+    const name = $(selectEl).attr("name");
+    const pair = map[name];
+    if (!pair) return;
+
+    const show = $(selectEl).val() !== "0";
+
+    pair.forEach(id => {
+      if (show) $(id).show();
+      else      $(id).hide();
+    });
+  }
+
+  // 初期化（各 select に対して実行）
+  Object.keys(map).forEach(name => {
+    syncVisibility($(`select[name="${name}"]`));
+  });
+
+  // select の変更イベント
+  $(document).on("change", "select", function() {
+    syncVisibility(this);
+  });
+
+});
+</script>
