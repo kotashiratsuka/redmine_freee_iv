@@ -36,13 +36,13 @@
 <%
   # freee API 接続確認（設定画面を開くたびに 1 回だけ実行）
   begin
-    comps = FreeeApiClient.companies
+    comps = FreeeApiClient.iv_companies
     if comps.present?
       api_status  = :ok
-      api_message = "#{comps.size} 件の事業所を取得"
+      api_message = "freee 請求書API への接続に成功しました"
     else
       api_status  = :empty
-      api_message = "接続は成功したが、取得できる事業所がありません"
+      api_message = "接続は成功したが、請求書API利用可能な事業所がありません"
     end
   rescue => e
     api_status  = :error

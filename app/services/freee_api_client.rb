@@ -44,6 +44,26 @@ class FreeeApiClient
     end
 
     # ==========================================
+    # 請求書(iv)APIが使える事業所だけに絞り込む
+    # ==========================================
+    def iv_companies
+      base = companies
+      return [] if base.blank?
+
+      base.select do |comp|
+        company_id = comp["id"]
+        begin
+          # 軽く 1件だけ叩いて権限チェック
+          get("/iv/invoices", company_id: company_id, limit: 1, offset: 0)
+          true
+        rescue OAuth2::Error => e
+          Rails.logger.info "[freee][SKIP company] company_id=#{company_id} 請求書API権限なし (#{e.message})"
+          false
+        end
+      end
+    end
+
+    # ==========================================
     # ★★★ ページング GET（正しい位置）★★★
     # ==========================================
     def get_all(path, company_id:, limit: 20, max_total: 20)

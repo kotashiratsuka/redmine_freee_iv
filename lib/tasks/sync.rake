@@ -65,7 +65,7 @@ def run_sync(dry_run:)
   # ===============================
   #   会社ループ
   # ===============================
-  companies = FreeeApiClient.companies
+  companies = FreeeApiClient.iv_companies
 
   # issue_id ごとの最終候補バッファ
   # { issue_id => { score:, new_status_id:, template:, vars:, next_status: } }
