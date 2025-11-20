@@ -30,6 +30,7 @@ class FreeeApiClient
     # ====== 単発 GET ======
     def get(path, company_id:, params: {})
       token = current_access_token(company_id)
+      raise "No freee credentials for company_id=#{company_id}" unless token
       res = token.get("#{API_BASE}#{path}", params: params.merge(company_id: company_id))
       JSON.parse(res.body)
     end
@@ -67,29 +68,6 @@ class FreeeApiClient
       FreeeIvCredential.pluck(:company_id).map(&:to_s)
     end
 
-    # ==========================================
-    # 請求書(iv)APIが使える事業所だけに絞り込む
-    # ==========================================
-    def iv_companies
-      base = companies
-      return [] if base.blank?
-
-      base.select do |comp|
-        company_id = comp["id"]
-        begin
-          # 軽く 1件だけ叩いて権限チェック
-          get(
-            "/iv/invoices",
-            company_id: company_id,
-            params: { limit: 1, offset: 0 }
-          )
-          true
-        rescue OAuth2::Error => e
-          Rails.logger.info "[freee][SKIP company] company_id=#{company_id} 請求書API権限なし (#{e.message})"
-          false
-        end
-      end
-    end
 
     # ==========================================
     # ★★★ ページング GET（正しい位置）★★★
@@ -139,7 +117,8 @@ class FreeeApiClient
         Setting.plugin_redmine_freee_iv['client_secret'],
         site: API_BASE,
         authorize_url: AUTHORIZE_URL,
-        token_url: TOKEN_URL
+        token_url: TOKEN_URL,
+        auth_scheme: :request_body # ← ★freeeの挙動に適合させる
       )
     end
 

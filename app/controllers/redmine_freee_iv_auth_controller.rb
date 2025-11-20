@@ -75,12 +75,8 @@ class RedmineFreeeIvAuthController < ApplicationController
   # === 認証開始（/start）
   #
   def start
-    payload = { ts: Time.now.to_i }
-    state = Base64.urlsafe_encode64(payload.to_json)
-
     redirect_to oauth_client.auth_code.authorize_url(
       redirect_uri: "#{request.base_url}/redmine_freee_iv/auth/callback",
-      state: state,
       prompt: "select_company"
     )
   end

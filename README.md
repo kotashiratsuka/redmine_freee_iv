@@ -21,8 +21,6 @@ freee 側の「件名（subject）」に含まれる **[#1234]** を Redmine Iss
 - アクセストークンの有効期限を表示
 - 「認証を解除する」ボタンで revoke も可能
 
-認証情報は `freee_credentials` テーブルに保存されます
-
 # 🏢 複数事業所（multi-company）対応
 
 freee のアカウントに複数の「事業所（company）」が紐づいている場合、
@@ -263,6 +261,7 @@ redmine_freee_iv/
     views/settings/_freee_settings.html.erb
   lib/tasks/sync.rake
   db/migrate/20251115080912_create_freee_credentials.rb
+  db/migrate/20251120025636_add_company_to_freee_iv_credentials.rb
   config/routes.rb
   init.rb
 ```

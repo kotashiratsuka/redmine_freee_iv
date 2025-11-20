@@ -66,7 +66,7 @@ def run_sync(dry_run:)
   #   会社ループ
   # ===============================
 
-  company_ids = FreeeIvCredential.pluck(:company_id).map(&:to_s)
+  company_ids = FreeeApiClient.active_companies
 
   if company_ids.empty?
     puts "[freee] No authenticated companies. Abort."

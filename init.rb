@@ -2,8 +2,8 @@ Redmine::Plugin.register :redmine_freee_iv do
   name        'Redmine freee Iv Plugin'
   author      'Kota Shiratsuka'
   description 'freee Invoice Status Sync'
-  version     '0.5.1'
-  url         'https://github.com/kotashiratsuka/redmine_freee'
+  version     '0.5.2'
+  url         'https://github.com/kotashiratsuka/redmine_freee_iv'
   author_url  'https://github.com/kotashiratsuka/'
   requires_redmine version_or_higher: '6.0.0'
 

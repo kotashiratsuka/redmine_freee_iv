@@ -1,6 +1,6 @@
 class CreateFreeeIvCredentials < ActiveRecord::Migration[6.1]
   def change
-    create_table :freee_credentials do |t|
+    create_table :freee_iv_credentials do |t|
       t.string :access_token
       t.string :refresh_token
       t.datetime :expires_at
