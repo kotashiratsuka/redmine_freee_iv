@@ -142,7 +142,7 @@ freee の **件名（subject）** に以下の形式を含めてください：
 ## ■ 見積書（Quotation）
 - `{amount}`  見積金額（カンマ区切り）
 - `{url}`     見積書の freee 管理画面 URL
-- `{status}`  送付ステータス（sent / unsent）
+- `{mail}`    送付ステータス（sent / unsent）
 
 ## ■ 請求書（Invoice）
 - `{amount}`   請求金額（カンマ区切り）
@@ -155,8 +155,6 @@ freee の **件名（subject）** に以下の形式を含めてください：
 - `{url}`      納品書 URL
 - `{mail}`     送付ステータス（sent / unsent）
 - `{payment}`  入金ステータス（settled / unsettled）
-
-※請求書では `{status}` は使用できません（値が渡らないため）
 
 ------------------------------------------------------------
 
@@ -278,6 +276,7 @@ redmine_freee_iv/
 - 「変更しない」を選んだイベントはスキップされます
 - コメント投稿ユーザーは `settings[user_id]` で指定
 - それぞれの取得件数を（100,200,300,400,unlimited）で選択可能
+- [freee API レートリミットについて](https://developer.freee.co.jp/reference/iv/reference#api_rate_limit) に注意
 
 ------------------------------------------------------------
 

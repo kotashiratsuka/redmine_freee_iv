@@ -163,7 +163,7 @@ def run_sync(dry_run:)
 
         # --- 最終ステータスのみモード: 候補を積む（DRY/SYNC 共通）---
         if apply_final_only
-          score = 1  # quotation の優先度
+          score = 0  # quotation の優先度
           cand  = updates[issue_id]
           if cand[:score].nil? || score >= cand[:score].to_i
             updates[issue_id] = {
@@ -296,7 +296,7 @@ def run_sync(dry_run:)
 
         # --- 最終ステータスのみモード: 候補を積む（DRY/SYNC 共通）---
         if apply_final_only
-          score = 0  # invoice の優先度
+          score = 1  # invoice の優先度
           cand  = updates[issue_id]
           if cand[:score].nil? || score >= cand[:score].to_i
             updates[issue_id] = {
