@@ -469,34 +469,40 @@ def run_sync(dry_run:)
   # ==========================
   #   最終ステータスのみ反映
   # ==========================
+  tag = dry_run ? "DRY" : "SYNC"
+
   updates.each do |issue_id, info|
     score = info[:score]
     next if score.nil? || score < 0
 
-    # --- DRY の場合も同じ順番で出す ---
-    if dry_run
-      next_status = info[:next_status] ||
-                    (IssueStatus.find_by(id: info[:new_status_id])&.name || "不明")
+    new_status_id = info[:new_status_id].to_i
+    next if new_status_id.zero?
 
-      puts "[freee][DRY final] ##{issue_id} → #{next_status}"
+    issue = Issue.find_by(id: issue_id)
+    current_name =
+      issue&.status&.name || "不明"
+
+    next_status =
+      info[:next_status] ||
+      (IssueStatus.find_by(id: new_status_id)&.name || "不明")
+
+    will_change = issue && issue.status_id != new_status_id
+
+    # --- DRY / SYNC 共通で必ず final ログを出す ---
+    if dry_run
+      puts "[freee][#{tag} final] ##{issue_id} (current=#{current_name}) → #{next_status}"
       next
     end
 
-    issue = Issue.find_by(id: issue_id)
-    next unless issue
+    # SYNC のときもログは必ず出す
+    puts "[freee][#{tag} final] ##{issue_id} (current=#{current_name}) → #{next_status}"
 
-    new_status_id = info[:new_status_id].to_i
-    next if new_status_id.zero?
-    next if issue.status_id == new_status_id
+    # 実際の更新は変化があるときだけ
+    next unless will_change
 
-    template    = info[:template]
-    vars        = info[:vars] || {}
-    next_status = info[:next_status] ||
-                  (IssueStatus.find_by(id: new_status_id)&.name || "不明")
-
-    message = apply_template(template, vars)
-
-    puts "[freee][UPDATE final] ##{issue_id} → #{next_status}"
+    template = info[:template]
+    vars     = info[:vars] || {}
+    message  = apply_template(template, vars)
 
     issue.init_journal(freee_update_user, message)
     issue.status_id = new_status_id
