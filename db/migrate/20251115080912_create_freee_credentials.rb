@@ -1,4 +1,4 @@
-class CreateFreeeCredentials < ActiveRecord::Migration[6.1]
+class CreateFreeeIvCredentials < ActiveRecord::Migration[6.1]
   def change
     create_table :freee_credentials do |t|
       t.string :access_token

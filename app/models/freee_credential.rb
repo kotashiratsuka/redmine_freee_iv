@@ -1,2 +1,0 @@
-class FreeeCredential < ApplicationRecord
-end

@@ -75,47 +75,51 @@ class RedmineFreeeIvAuthController < ApplicationController
   # === 認証開始（/start）
   #
   def start
-    state = SecureRandom.hex(16)
-    session[:freee_oauth_state] = state
+    payload = { ts: Time.now.to_i }
+    state = Base64.urlsafe_encode64(payload.to_json)
 
     redirect_to oauth_client.auth_code.authorize_url(
-      redirect_uri: redirect_uri,
-      scope: scope,
+      redirect_uri: "#{request.base_url}/redmine_freee_iv/auth/callback",
       state: state,
       prompt: "select_company"
     )
   end
 
-
   #
   # === コールバック（/callback）
   #
   def callback
-    # CSRF Check
-    if params[:state] != session[:freee_oauth_state]
-      render plain: "Invalid state", status: 400
-      return
-    end
+    redirect_uri = "#{request.base_url}/redmine_freee_iv/auth/callback"
 
-    # Token Exchange
+    # 認可コードからアクセストークンを取得
     token = oauth_client.auth_code.get_token(
       params[:code],
       redirect_uri: redirect_uri
     )
 
-    # 保存
-    FreeeCredential.delete_all
-    FreeeCredential.create!(
+    # ★ freee の仕様上、ここにユーザーが選んだ事業所IDが入る
+    company_id = token.params["company_id"] || token.params[:company_id]
+    Rails.logger.info("[freee_iv] token.params = #{token.params.inspect}")
+
+    raise "no company_id in token" if company_id.blank?
+    company_id = company_id.to_s
+
+    cred = FreeeIvCredential.find_or_initialize_by(company_id: company_id)
+    cred.update!(
       access_token:  token.token,
       refresh_token: token.refresh_token,
       expires_at:    Time.at(token.expires_at)
     )
+
     redirect_to "/settings/plugin/redmine_freee_iv"
   end
 
-  def reset
-    FreeeCredential.delete_all
-    flash[:notice] = "freee の認証を解除しました。"
+  def revoke
+    company_id = params[:company_id].to_s
+    cred = FreeeIvCredential.find_by(company_id: company_id)
+    cred&.destroy
+
+    flash[:notice] = "事業所（ID: #{company_id}）の認証を解除しました"
     redirect_to "/settings/plugin/redmine_freee_iv"
   end
 

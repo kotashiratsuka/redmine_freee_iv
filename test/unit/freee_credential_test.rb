@@ -1,6 +1,6 @@
 require_relative '../test_helper'
 
-class FreeeCredentialTest < ActiveSupport::TestCase
+class FreeeIvCredentialTest < ActiveSupport::TestCase
 
   # Replace this with your real tests.
   def test_truth

@@ -65,14 +65,19 @@ def run_sync(dry_run:)
   # ===============================
   #   会社ループ
   # ===============================
-  companies = FreeeApiClient.iv_companies
+
+  company_ids = FreeeIvCredential.pluck(:company_id).map(&:to_s)
+
+  if company_ids.empty?
+    puts "[freee] No authenticated companies. Abort."
+    return
+  end
 
   # issue_id ごとの最終候補バッファ
   # { issue_id => { score:, new_status_id:, template:, vars:, next_status: } }
   updates = Hash.new { |h, k| h[k] = { score: -1 } }
 
-  companies.each do |comp|
-    company_id = comp["id"]
+  company_ids.each do |company_id|
 
     # ==========================
     #   見積 (quotations)

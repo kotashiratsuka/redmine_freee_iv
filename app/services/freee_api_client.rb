@@ -9,8 +9,10 @@ class FreeeApiClient
     # ======================
     # アクセストークン取得
     # ======================
-    def current_access_token
-      cred = FreeeCredential.first
+
+    def current_access_token(company_id)
+      return nil if company_id.blank?
+      cred = FreeeIvCredential.find_by(company_id: company_id.to_s)
       return nil unless cred
 
       if cred.expires_at < 15.minutes.from_now
@@ -26,21 +28,43 @@ class FreeeApiClient
     end
 
     # ====== 単発 GET ======
-    def get(path, params = {})
-      token = current_access_token
-      raise "No freee credentials" unless token
-
-      res = token.get("#{API_BASE}#{path}", params: params)
+    def get(path, company_id:, params: {})
+      token = current_access_token(company_id)
+      res = token.get("#{API_BASE}#{path}", params: params.merge(company_id: company_id))
       JSON.parse(res.body)
+    end
+
+    # どれか1つの事業所で良いのでトークンを取る（会社一覧用）
+    def current_access_token_for_any
+      cred = FreeeIvCredential.first
+      return nil unless cred
+
+      if cred.expires_at < 15.minutes.from_now
+        cred = refresh!(cred)
+      end
+
+      OAuth2::AccessToken.new(
+        oauth_client,
+        cred.access_token,
+        refresh_token: cred.refresh_token,
+        expires_at: cred.expires_at.to_i
+      )
     end
 
     # ====== 会社一覧 ======
     def companies
-      res = get("/api/1/companies")
-      res["companies"] || []
+      token = current_access_token_for_any
+      raise "No freee credentials" unless token
+
+      res = token.get("#{API_BASE}/api/1/companies")
+      JSON.parse(res.body)["companies"] || []
     rescue OAuth2::Error => e
       Rails.logger.error("[freee] companies fetch error: #{e.message}")
       []
+    end
+
+    def active_companies
+      FreeeIvCredential.pluck(:company_id).map(&:to_s)
     end
 
     # ==========================================
@@ -54,7 +78,11 @@ class FreeeApiClient
         company_id = comp["id"]
         begin
           # 軽く 1件だけ叩いて権限チェック
-          get("/iv/invoices", company_id: company_id, limit: 1, offset: 0)
+          get(
+            "/iv/invoices",
+            company_id: company_id,
+            params: { limit: 1, offset: 0 }
+          )
           true
         rescue OAuth2::Error => e
           Rails.logger.info "[freee][SKIP company] company_id=#{company_id} 請求書API権限なし (#{e.message})"
@@ -82,12 +110,7 @@ class FreeeApiClient
         break if fetched >= max_total
 
         begin
-          res = get(
-            path,
-            company_id: company_id,
-            limit: limit,
-            offset: offset
-          )
+          res = get(path, company_id:, params: { limit:, offset: })
         rescue OAuth2::Error => e
           puts "[freee][SKIP] #{path} company_id=#{company_id} 権限なし (#{e.message})"
           break
@@ -97,7 +120,7 @@ class FreeeApiClient
         break if items.empty?
 
         allowed = max_total - fetched
-        batch   = (max_total.infinite? ? items : items.first(allowed))
+        batch   = max_total.infinite? ? items : items.first(allowed)
 
         all_items.concat(batch)
         fetched += batch.size
