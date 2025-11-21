@@ -116,6 +116,17 @@
 
 <div id="quotation_settings" style="display: none;">
   <p>
+    チケット番号の抽出元：
+    <select name="settings[ticket_source_quotation]">
+      <option value="subject" <%= "selected" if settings['ticket_source_quotation'] == "subject" %>>
+        件名 (subject)
+      </option>
+      <option value="quotation_number" <%= "selected" if settings['ticket_source_quotation'] == "quotation_number" %>>
+        見積書番号 (quotation_number)
+      </option>
+    </select>
+  </p>
+  <p>
     見積書が <strong>送付済み (sent)</strong> の時のステータス：
     <%= select_tag 'settings[quotation_sent_status]',
           options_for_select(
@@ -158,6 +169,17 @@
 </p>
 
 <div id="invoice_settings" style="display: none;">
+  <p>
+    チケット番号の抽出元：
+    <select name="settings[ticket_source_invoice]">
+      <option value="subject" <%= "selected" if settings['ticket_source_invoice'] == "subject" %>>
+        件名 (subject)
+      </option>
+      <option value="invoice_number" <%= "selected" if settings['ticket_source_invoice'] == "invoice_number" %>>
+        請求書番号 (invoice_number)
+      </option>
+    </select>
+  </p>
 <p>
   請求書が <strong>送付済み (sent)</strong> の時のステータス：
   <%= select_tag 'settings[invoice_sent_status]',
@@ -222,6 +244,17 @@
 </p>
 
 <div id="delivery_settings" style="display: none;">
+<p>
+  チケット番号の抽出元：
+  <select name="settings[ticket_source_delivery]">
+    <option value="subject" <%= "selected" if settings['ticket_source_delivery'] == "subject" %>>
+      件名 (subject)
+    </option>
+    <option value="delivery_slip_number" <%= "selected" if settings['ticket_source_delivery'] == "delivery_slip_number" %>>
+      納品書番号 (delivery_slip_number)
+    </option>
+  </select>
+</p>
   <p>
     納品書が <strong>送付済み (sent)</strong> の時のステータス：
     <%= select_tag 'settings[delivery_slip_sent_status]',

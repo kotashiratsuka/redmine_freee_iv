@@ -15,6 +15,31 @@ def apply_template(template, vars = {})
   end
 end
 
+# ===========================================================
+#  issue ID 抽出（共通）
+#  field は "subject" 以外にも
+#   quotation_number / invoice_number / delivery_slip_number
+#  に対応できる
+# ===========================================================
+def extract_issue_id(record, field)
+  value =
+    case field.to_s
+    when "subject"
+      record["subject"].to_s
+    when "quotation_number"
+      record["quotation_number"].to_s
+    when "invoice_number"
+      record["invoice_number"].to_s
+    when "delivery_slip_number"
+      record["delivery_slip_number"].to_s
+    else
+      record[field].to_s
+    end
+
+  return nil unless value =~ /\[#?(\d+)\]/
+  Regexp.last_match(1).to_i
+end
+
 # =====================================================================
 #  共通ロジック本体（DRY-RUN / SYNC を統合）
 # =====================================================================
@@ -27,6 +52,10 @@ def run_sync(dry_run:)
   ignored_status_ids   = Array(plugin['ignored_status_ids']).map(&:to_i)
 
   apply_final_only     = plugin['apply_final_only'] == '1'
+
+  src_quotation        = plugin['ticket_source_quotation']  || 'subject'
+  src_invoice          = plugin['ticket_source_invoice']    || 'subject'
+  src_delivery_slip    = plugin['ticket_source_delivery']   || 'subject'
 
   # === 見積ステータス / テンプレート ===
   quotation_sent_id     = plugin['quotation_sent_status'].to_i
@@ -97,9 +126,9 @@ def run_sync(dry_run:)
         quotation_id = quotation["id"]
 
         # [#1234] → issue_id
-        next unless subject =~ /\[#?(\d+)\]/
-        issue_id = Regexp.last_match(1).to_i
-        issue    = Issue.find_by(id: issue_id)
+        issue_id = extract_issue_id(quotation, src_quotation)
+        next unless issue_id
+        issue = Issue.find_by(id: issue_id)
         next unless issue
 
         if quotation["cancel_status"] == "canceled"
@@ -221,9 +250,9 @@ def run_sync(dry_run:)
         invoice_id = invoice['id']
 
         # subject から [#1234]
-        next unless subject =~ /\[#?(\d+)\]/
-        issue_id = Regexp.last_match(1).to_i
-        issue    = Issue.find_by(id: issue_id)
+        issue_id = extract_issue_id(invoice, src_invoice)
+        next unless issue_id
+        issue = Issue.find_by(id: issue_id)
         next unless issue
 
         if invoice["cancel_status"] == "canceled"
@@ -355,8 +384,8 @@ def run_sync(dry_run:)
         delivery_slip_id = delivery_slip['id']
 
         # subject から [#1234]
-        next unless subject =~ /\[#?(\d+)\]/
-        issue_id = Regexp.last_match(1).to_i
+        issue_id = extract_issue_id(delivery_slip, src_delivery_slip)
+        next unless issue_id
         issue    = Issue.find_by(id: issue_id)
         next unless issue
 

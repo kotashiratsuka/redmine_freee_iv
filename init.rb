@@ -2,7 +2,7 @@ Redmine::Plugin.register :redmine_freee_iv do
   name        'Redmine freee Iv Plugin'
   author      'Kota Shiratsuka'
   description 'freee Invoice Status Sync'
-  version     '0.5.3'
+  version     '0.6.0'
   url         'https://github.com/kotashiratsuka/redmine_freee_iv'
   author_url  'https://github.com/kotashiratsuka/'
   requires_redmine version_or_higher: '6.0.0'
@@ -11,6 +11,11 @@ Redmine::Plugin.register :redmine_freee_iv do
   'client_id' => '',
   'client_secret' => '',
   'user_id' => '',
+
+  # --- チケット番号抽出元（書類ごと） ---
+  'ticket_source_quotation'  => 'subject',
+  'ticket_source_invoice'    => 'subject',
+  'ticket_source_delivery'   => 'subject',
 
   # --- 同期 ON/OFF ---
   'sync_quotations' => '0',
