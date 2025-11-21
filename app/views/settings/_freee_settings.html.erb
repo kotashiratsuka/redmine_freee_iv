@@ -5,33 +5,23 @@
 
 <% if authed_count == 0 %>
 
+  <p>Client ID / Secret を入力、保存してから認証を開始してください</p>
+
   <p>
-    Client ID / Secret を入力、保存してから認証を開始してください
+    <label>Client ID</label>
+    <input type="text" name="settings[client_id]" value="<%= settings['client_id'] %>" />
   </p>
 
   <p>
-    <label for="settings_client_id">Client ID</label>
-    <input type="text" name="settings[client_id]"
-           value="<%= settings['client_id'] %>" />
+    <label>Client Secret</label>
+    <input type="password" name="settings[client_secret]" value="<%= settings['client_secret'] %>" />
   </p>
 
-  <p>
-    <label for="settings_client_secret">Client Secret</label>
-    <input type="password" name="settings[client_secret]"
-           value="<%= settings['client_secret'] %>" />
-  </p>
+  <p><input type="submit" value="保存" class="button-small"></p>
 
-  <p>
-    <input type="submit" value="保存" class="button-small">
-  </p>
-
-  <%# 認証開始ボタン（Client ID/Secret がある場合のみ） %>
   <% if settings['client_id'].present? && settings['client_secret'].present? %>
     <p><%= link_to "▶ 認証を開始する", "/redmine_freee_iv/auth/start" %></p>
   <% end %>
-
-  <%# 認証前なので、ここで会社一覧を出さず終了する %>
-  <%# 下の API 呼び出しブロックは実行しない %>
 
 <% else %>
 
@@ -49,40 +39,64 @@
     creds_by_id = FreeeIvCredential.all.index_by(&:company_id)
   %>
 
-  <p>
-    <strong>認証済事業所数：</strong>
-    <%= creds_by_id.size %> / <%= comps.size %>
-  </p>
+  <%# ================================
+     API成功 && comps=0 → token破損扱い
+     ================================ %>
+  <% if api_status == :ok && comps.size == 0 %>
 
-  <p><strong>freee API 接続テスト：</strong>
-    <% if api_status == :ok %>
-      <span style="color: green;">● OK</span>（<%= api_message %>）
-    <% else %>
-      <span style="color: red;">● エラー</span>（<%= api_message %>）
-    <% end %>
-  </p>
-
-  <% comps.each do |c| %>
-    <% cid = c["id"].to_s %>
-    <p style="margin-left: 1em;">
-      <strong><%= c["display_name"] %></strong>（ID: <%= cid %>）：
-
-      <% if creds_by_id[cid] %>
-        <span style="color: green;">認証済</span>
-        <%= link_to "認証解除",
-          "/redmine_freee_iv/auth/revoke?company_id=#{cid}",
-          method: :delete,
-          data: { confirm: "この事業所の認証を解除しますか？" } %>
-
-      <% else %>
-        <span style="color: red;">未認証</span>
-        <%= link_to "認証する",
-          "/redmine_freee_iv/auth/start?company_id=#{cid}" %>
-      <% end %>
+    <p style="color:red; font-weight:bold;">
+      事業所が取得できません。再認証が必要です。
     </p>
-  <% end %>
-<% end %>
 
+    <% if settings['client_id'].present? && settings['client_secret'].present? %>
+      <p>
+        <%= link_to "▶ 再認証する", "/redmine_freee_iv/auth/start" %>
+      </p>
+    <% end %>
+
+  <% elsif api_status == :error %>
+
+    <p><strong>freee API 接続テスト：</strong>
+      <span style="color: red;">● エラー</span>（<%= api_message %>）
+    </p>
+
+    <% if settings['client_id'].present? && settings['client_secret'].present? %>
+      <p><%= link_to "▶ 再認証する", "/redmine_freee_iv/auth/start" %></p>
+    <% end %>
+
+  <% else %>
+
+    <p>
+      <strong>認証済事業所数：</strong>
+      <%= creds_by_id.size %> / <%= comps.size %>
+    </p>
+
+    <p><strong>freee API 接続テスト：</strong>
+      <span style="color: green;">● OK</span>（<%= api_message %>）
+    </p>
+
+    <% comps.each do |c| %>
+      <% cid = c["id"].to_s %>
+      <p style="margin-left: 1em;">
+        <strong><%= c["display_name"] %></strong>（ID: <%= cid %>）：
+
+        <% if creds_by_id[cid] %>
+          <span style="color: green;">認証済</span>
+          <%= link_to "認証解除",
+                "/redmine_freee_iv/auth/revoke?company_id=#{cid}",
+                method: :delete,
+                data: { confirm: "この事業所の認証を解除しますか？" } %>
+        <% else %>
+          <span style="color: red;">未認証</span>
+          <%= link_to "認証する",
+                "/redmine_freee_iv/auth/start?company_id=#{cid}" %>
+        <% end %>
+      </p>
+    <% end %>
+
+  <% end %>
+
+<% end %>
 <hr>
 
 <!-- ========================================================= -->
