@@ -1,43 +1,23 @@
 # plugins/redmine_freee_iv/lib/tasks/sync.rake
 require "active_support/number_helper"
+require_relative "../../app/services/document_type_definitions"
+require_relative "../../app/services/freee_issue_support"
 
-# ===== コメント投稿ユーザー =====
-def freee_update_user
-  uid = Setting.plugin_redmine_freee_iv['user_id'].presence || 1
-  User.find(uid)
-end
+# ===== 書類タイプごとの設定を構築 =====
+def build_document_config(doc_type, plugin)
+  defn = DocumentTypeDefinitions.document_types.fetch(doc_type)
+  config = {
+    ticket_source: plugin[defn[:ticket_source_key]] || "subject",
+    priority_score: defn[:priority_score]
+  }
 
-# ===== テンプレート適用 =====
-def apply_template(template, vars = {})
-  return "" if template.blank?
-  vars.reduce(template.to_s) do |msg, (key, val)|
-    msg.gsub("{#{key}}", val.to_s)
+  defn[:statuses].each do |status|
+    prefix = defn[:settings_prefix]
+    config[:"#{status}_status_id"] = plugin["#{prefix}_#{status}_status"].to_i
+    config[:"#{status}_template"] = plugin["#{prefix}_#{status}_comment"]
   end
-end
 
-# ===========================================================
-#  issue ID 抽出（共通）
-#  field は "subject" 以外にも
-#   quotation_number / invoice_number / delivery_slip_number
-#  に対応できる
-# ===========================================================
-def extract_issue_id(record, field)
-  value =
-    case field.to_s
-    when "subject"
-      record["subject"].to_s
-    when "quotation_number"
-      record["quotation_number"].to_s
-    when "invoice_number"
-      record["invoice_number"].to_s
-    when "delivery_slip_number"
-      record["delivery_slip_number"].to_s
-    else
-      record[field].to_s
-    end
-
-  return nil unless value =~ /\[#?(\d+)\]/
-  Regexp.last_match(1).to_i
+  config
 end
 
 # =====================================================================
@@ -46,65 +26,24 @@ end
 def run_sync(dry_run:)
   plugin = Setting.plugin_redmine_freee_iv
 
-  sync_quotations      = plugin['sync_quotations'] == '1'
-  sync_invoices        = plugin['sync_invoices']  == '1'
-  sync_delivery_slips  = plugin['sync_delivery_slips']  == '1'
   ignored_status_ids   = Array(plugin['ignored_status_ids']).map(&:to_i)
-
   apply_final_only     = plugin['apply_final_only'] == '1'
-
-  src_quotation        = plugin['ticket_source_quotation']  || 'subject'
-  src_invoice          = plugin['ticket_source_invoice']    || 'subject'
-  src_delivery_slip    = plugin['ticket_source_delivery']   || 'subject'
-
-  # === 見積ステータス / テンプレート ===
-  quotation_sent_id      = plugin['quotation_sent_status'].to_i
-  quotation_unsent_id    = plugin['quotation_unsent_status'].to_i
-  quotation_canceled_id  = plugin['quotation_canceled_status'].to_i
-  tpl_quotation_sent     = plugin['quotation_sent_comment']
-  tpl_quotation_unsent   = plugin['quotation_unsent_comment']
-  tpl_quotation_canceled = plugin['quotation_canceled_comment']
-
-  # === 請求書ステータス / テンプレート ===
-  invoice_sent_id      = plugin['invoice_sent_status'].to_i
-  invoice_unsent_id    = plugin['invoice_unsent_status'].to_i
-  invoice_paid_id      = plugin['invoice_paid_status'].to_i
-  invoice_unpaid_id    = plugin['invoice_unpaid_status'].to_i
-  invoice_canceled_id  = plugin['invoice_canceled_status'].to_i
-
-  tpl_invoice_sent     = plugin['invoice_sent_comment']
-  tpl_invoice_unsent   = plugin['invoice_unsent_comment']
-  tpl_invoice_paid     = plugin['invoice_paid_comment']
-  tpl_invoice_unpaid   = plugin['invoice_unpaid_comment']
-  tpl_invoice_canceled = plugin['invoice_canceled_comment']
-
-  # === 納品書ステータス / テンプレート ===
-  delivery_slip_sent_id      = plugin['delivery_slip_sent_status'].to_i
-  delivery_slip_unsent_id    = plugin['delivery_slip_unsent_status'].to_i
-  delivery_slip_paid_id      = plugin['delivery_slip_paid_status'].to_i
-  delivery_slip_unpaid_id    = plugin['delivery_slip_unpaid_status'].to_i
-  delivery_slip_canceled_id  = plugin['delivery_slip_canceled_status'].to_i
-
-  tpl_delivery_slip_sent     = plugin['delivery_slip_sent_comment']
-  tpl_delivery_slip_unsent   = plugin['delivery_slip_unsent_comment']
-  tpl_delivery_slip_paid     = plugin['delivery_slip_paid_comment']
-  tpl_delivery_slip_unpaid   = plugin['delivery_slip_unpaid_comment']
-  tpl_delivery_slip_canceled = plugin['delivery_slip_canceled_comment']
 
   # === 設定値（100,200,300,...,unlimited） ===
   raw_total = plugin['max_fetch_total']
   max_total = (raw_total == 'unlimited' ? :unlimited : raw_total.to_i)
 
-  puts dry_run ? "[freee] Start DRY-RUN..." : "[freee] Start sync..."
+  tag = dry_run ? "DRY" : "SYNC"
+  max_total_label = (max_total == :unlimited ? "unlimited" : max_total)
+  puts "#{log_prefix(tag, 'START')} apply_final_only=#{apply_final_only} max_total=#{max_total_label}"
 
   # ===============================
   #   会社ループ
   # ===============================
-
   company_ids = FreeeApiClient.active_companies
 
   if company_ids.empty?
-    puts "[freee] No authenticated companies. Abort."
+    puts "#{log_prefix(tag, 'ABORT')} reason=no_authenticated_companies"
     return
   end
 
@@ -112,389 +51,39 @@ def run_sync(dry_run:)
   # { issue_id => { score:, new_status_id:, template:, vars:, next_status: } }
   updates = Hash.new { |h, k| h[k] = { score: -1 } }
 
+  # 書類タイプごとの処理定義
+  document_types = DocumentTypeDefinitions.document_types.map do |type, defn|
+    {
+      type: type,
+      enabled: plugin[defn[:sync_key]] == "1",
+      endpoint: defn[:endpoint]
+    }
+  end
+
   company_ids.each do |company_id|
+    document_types.each do |doc_def|
+      next unless doc_def[:enabled]
 
-    # ==========================
-    #   見積 (quotations)
-    # ==========================
-    if sync_quotations
-      quotations = FreeeApiClient.get_all(
-        "/iv/quotations",
+      # 書類を取得
+      documents = FreeeApiClient.get_all(
+        doc_def[:endpoint],
         company_id: company_id,
         limit: 100,
         max_total: max_total
       )
 
-      quotations.each do |quotation|
-        subject      = quotation["subject"].to_s
-        mail         = quotation["sending_status"]
-        amount       = quotation["total_amount"]
-        quotation_id = quotation["id"]
+      # 設定を構築
+      config = build_document_config(doc_def[:type], plugin)
+      options = {
+        dry_run: dry_run,
+        ignored_status_ids: ignored_status_ids,
+        apply_final_only: apply_final_only
+      }
 
-        # [#1234] → issue_id
-        issue_id = extract_issue_id(quotation, src_quotation)
-        next unless issue_id
-        issue = Issue.find_by(id: issue_id)
-        next unless issue
-
-        amount_fmt    = ActiveSupport::NumberHelper.number_to_delimited(amount)
-        quotation_url = "https://invoice.secure.freee.co.jp/reports/quotations/#{quotation_id}"
-
-        new_status_id =
-          if quotation["cancel_status"] == "canceled"
-            quotation_canceled_id
-          elsif mail == "sent"
-            quotation_sent_id
-          elsif mail == "unsent"
-            quotation_unsent_id
-          else
-            puts "[freee][WARN] unknown quotations status mail=#{mail} → skip"
-            0
-          end
-
-        next_status =
-          new_status_id.zero? ? "変更しない" :
-            (IssueStatus.find_by(id: new_status_id)&.name || "不明")
-
-        current_status_id = issue.status_id
-
-        # --- ignore: 現在ステータスが対象 ---
-        if ignored_status_ids.include?(current_status_id)
-          label = IssueStatus.find_by(id: current_status_id)&.name || "ID=#{current_status_id}"
-          puts(dry_run ?
-            "[freee][DRY][IGNORE] ##{issue_id} current=#{label} (保護ステータス)" :
-            "[freee][IGNORE] ##{issue_id} current=#{label} (保護ステータス)"
-          )
-          next
-        end
-
-        # --- 0 = 変更しない ---
-        if new_status_id.zero?
-          puts(dry_run ?
-            "[freee][DRY][SKIP] ##{issue_id} new_status_id=0 (変更しない)" :
-            "[freee][SKIP] ##{issue_id} new_status_id=0 (変更しない)"
-          )
-          next
-        end
-
-        # --- コメントテンプレートと埋め込み変数 ---
-        template =
-          if quotation["cancel_status"] == "canceled"
-            tpl_quotation_canceled
-          elsif mail == "sent"
-            tpl_quotation_sent
-          elsif mail == "unsent"
-            tpl_quotation_unsent
-          else
-            ""
-          end
-
-        vars = {
-          amount: amount_fmt,
-          url:    quotation_url,
-          mail:   mail
-        }
-
-        # --- 最終ステータスのみモード: 候補を積む（DRY/SYNC 共通）---
-        if apply_final_only
-          score = 0  # quotation の優先度
-          cand  = updates[issue_id]
-          if cand[:score].nil? || score >= cand[:score].to_i
-            updates[issue_id] = {
-              score:         score,
-              new_status_id: new_status_id,
-              template:      template,
-              vars:          vars,
-              next_status:   next_status
-            }
-          end
-        end
-
-        # --- 個別ログ出力（DRY / SYNC 共通）---
-        tag = dry_run ? "DRY" : "SYNC"
-        puts "[freee][#{tag} quotation] ##{issue_id} mail=#{mail}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
-
-        # --- DRY-RUN の場合はここまで（final でまとめて出すため updates は既に埋まっている）---
-        if dry_run
-          next
-        end
-
-        # --- apply_final_only=true のときはここでは更新しない（最後にまとめて更新）---
-        if apply_final_only
-          next
-        end
-
-        # --- apply_final_only=false: 従来通りその場で更新 ---
-        next if issue.status_id == new_status_id
-
-        message = apply_template(template, vars)
-
-        puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
-
-        issue.init_journal(freee_update_user, message)
-        issue.status_id = new_status_id
-        issue.save!
-      end
-    end
-    # ==========================
-    #   請求書 (invoices)
-    # ==========================
-    if sync_invoices
-      invoices = FreeeApiClient.get_all(
-        "/iv/invoices",
-        company_id: company_id,
-        limit: 100,
-        max_total: max_total
-      )
-
-      invoices.each do |invoice|
-        subject    = invoice['subject'].to_s
-        mail       = invoice['sending_status']
-        payment    = invoice['payment_status']
-        amount     = invoice['total_amount']
-        invoice_id = invoice['id']
-
-        # subject から [#1234]
-        issue_id = extract_issue_id(invoice, src_invoice)
-        next unless issue_id
-        issue = Issue.find_by(id: issue_id)
-        next unless issue
-
-        amount_fmt  = ActiveSupport::NumberHelper.number_to_delimited(amount)
-        invoice_url = "https://invoice.secure.freee.co.jp/reports/invoices/#{invoice_id}"
-
-        new_status_id =
-          if invoice["cancel_status"] == "canceled"
-            invoice_canceled_id
-          elsif payment == "settled"
-            invoice_paid_id
-          elsif mail == "sent"
-            invoice_sent_id
-          elsif mail == "unsent"
-            invoice_unsent_id
-          elsif payment == "unsettled"
-            invoice_unpaid_id
-          else
-            puts "[freee][WARN] unknown invoice status mail=#{mail}, payment=#{payment} → skip"
-            0
-          end
-
-        next_status =
-          new_status_id.zero? ? "変更しない" :
-            (IssueStatus.find_by(id: new_status_id)&.name || "不明")
-
-        current_status_id = issue.status_id
-
-        # --- ignore: 現在ステータスが対象 ---
-        if ignored_status_ids.include?(current_status_id)
-          label = IssueStatus.find_by(id: current_status_id)&.name || "ID=#{current_status_id}"
-          puts(dry_run ?
-            "[freee][DRY][IGNORE] ##{issue_id} current=#{label} (無視ステータス)" :
-            "[freee][IGNORE] ##{issue_id} current=#{label} (無視ステータス)"
-          )
-          next
-        end
-
-        # --- 0 = 変更しない ---
-        if new_status_id.zero?
-          puts(dry_run ?
-            "[freee][DRY][SKIP] ##{issue_id} new_status_id=0 (変更しない)" :
-            "[freee][SKIP] ##{issue_id} new_status_id=0 (変更しない)"
-          )
-          next
-        end
-
-        # --- コメントテンプレートと埋め込み変数 ---
-        template =
-          if invoice["cancel_status"] == "canceled"
-            tpl_invoice_canceled
-          elsif payment == "settled"
-            tpl_invoice_paid
-          elsif mail == "sent"
-            tpl_invoice_sent
-          elsif mail == "unsent"
-            tpl_invoice_unsent
-          else
-            tpl_invoice_unpaid
-          end
-
-        vars = {
-          amount:  amount_fmt,
-          url:     invoice_url,
-          mail:    mail,
-          payment: payment
-        }
-
-        # --- 最終ステータスのみモード: 候補を積む（DRY/SYNC 共通）---
-        if apply_final_only
-          score = 1  # invoice の優先度
-          cand  = updates[issue_id]
-          if cand[:score].nil? || score >= cand[:score].to_i
-            updates[issue_id] = {
-              score:         score,
-              new_status_id: new_status_id,
-              template:      template,
-              vars:          vars,
-              next_status:   next_status
-            }
-          end
-        end
-
-        # --- 個別ログ出力 ---
-        tag = dry_run ? "DRY" : "SYNC"
-        puts "[freee][#{tag} invoice] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
-
-        # --- DRY の場合はここまで ---
-        if dry_run
-          next
-        end
-
-        # --- apply_final_only=true のときはここでは更新しない ---
-        if apply_final_only
-          next
-        end
-
-        # --- apply_final_only=false: 従来どおり即時更新 ---
-        next if issue.status_id == new_status_id
-
-        message = apply_template(template, vars)
-
-        puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
-
-        issue.init_journal(freee_update_user, message)
-        issue.status_id = new_status_id
-        issue.save!
-      end
-    end
-
-    # ==========================
-    #   納品書 (delivery_slips)
-    # ==========================
-    if sync_delivery_slips
-      delivery_slips = FreeeApiClient.get_all(
-        "/iv/delivery_slips",
-        company_id: company_id,
-        limit: 100,
-        max_total: max_total
-      )
-
-      delivery_slips.each do |delivery_slip|
-        subject          = delivery_slip['subject'].to_s
-        mail             = delivery_slip['sending_status']
-        payment          = delivery_slip['payment_status']
-        amount           = delivery_slip['total_amount']
-        delivery_slip_id = delivery_slip['id']
-
-        # subject から [#1234]
-        issue_id = extract_issue_id(delivery_slip, src_delivery_slip)
-        next unless issue_id
-        issue    = Issue.find_by(id: issue_id)
-        next unless issue
-
-        amount_fmt        = ActiveSupport::NumberHelper.number_to_delimited(amount)
-        delivery_slip_url = "https://invoice.secure.freee.co.jp/reports/delivery_slips/#{delivery_slip_id}"
-
-        new_status_id =
-          if delivery_slip["cancel_status"] == "canceled"
-            delivery_slip_canceled_id
-          elsif payment == "settled"
-            delivery_slip_paid_id
-          elsif mail == "sent"
-            delivery_slip_sent_id
-          elsif mail == "unsent"
-            delivery_slip_unsent_id
-          elsif payment == "unsettled"
-            delivery_slip_unpaid_id
-          else
-            puts "[freee][WARN] unknown delivery_slip status mail=#{mail}, payment=#{payment} → skip"
-            0
-          end
-
-        next_status =
-          new_status_id.zero? ? "変更しない" :
-            (IssueStatus.find_by(id: new_status_id)&.name || "不明")
-
-        current_status_id = issue.status_id
-
-        # --- ignore: 現在ステータスが対象 ---
-        if ignored_status_ids.include?(current_status_id)
-          label = IssueStatus.find_by(id: current_status_id)&.name || "ID=#{current_status_id}"
-          puts(dry_run ?
-            "[freee][DRY][IGNORE] ##{issue_id} current=#{label} (無視ステータス)" :
-            "[freee][IGNORE] ##{issue_id} current=#{label} (無視ステータス)"
-          )
-          next
-        end
-
-        # --- 0 = 変更しない ---
-        if new_status_id.zero?
-          puts(dry_run ?
-            "[freee][DRY][SKIP] ##{issue_id} new_status_id=0 (変更しない)" :
-            "[freee][SKIP] ##{issue_id} new_status_id=0 (変更しない)"
-          )
-          next
-        end
-
-        # --- コメントテンプレートと埋め込み変数 ---
-        template =
-          if delivery_slip["cancel_status"] == "canceled"
-            tpl_delivery_slip_canceled
-          elsif payment == "settled"
-            tpl_delivery_slip_paid
-          elsif mail == "sent"
-            tpl_delivery_slip_sent
-          elsif mail == "unsent"
-            tpl_delivery_slip_unsent
-          else
-            tpl_delivery_slip_unpaid
-          end
-
-        vars = {
-          amount:  amount_fmt,
-          url:     delivery_slip_url,
-          mail:    mail,
-          payment: payment
-        }
-
-        # --- 最終ステータスのみモード: 候補を積む（DRY/SYNC 共通）---
-        if apply_final_only
-          score = 2  # delivery_slip の優先度（最強）
-          cand  = updates[issue_id]
-          if cand[:score].nil? || score >= cand[:score].to_i
-            updates[issue_id] = {
-              score:         score,
-              new_status_id: new_status_id,
-              template:      template,
-              vars:          vars,
-              next_status:   next_status
-            }
-          end
-        end
-
-        # --- 個別ログ出力 ---
-        tag = dry_run ? "DRY" : "SYNC"
-        puts "[freee][#{tag} delivery_slip] ##{issue_id} mail=#{mail}, payment=#{payment}, amount=#{amount_fmt} (current=#{issue.status.name}, next=#{next_status})"
-
-        # --- DRY の場合はここまで ---
-        if dry_run
-          next
-        end
-
-        # --- apply_final_only=true のときはここでは更新しない ---
-        if apply_final_only
-          next
-        end
-
-        # --- apply_final_only=false: 従来どおり即時更新 ---
-        next if issue.status_id == new_status_id
-
-        message = apply_template(template, vars)
-
-        puts "[freee][UPDATE] ##{issue_id} → #{next_status}"
-
-        issue.init_journal(freee_update_user, message)
-        issue.status_id = new_status_id
-        issue.save!
+      # プロセッサーを作成して各書類を処理
+      processor = DocumentSyncProcessor.new(doc_def[:type], config, options)
+      documents.each do |document|
+        processor.process_document(document, updates)
       end
     end
   end
@@ -502,8 +91,6 @@ def run_sync(dry_run:)
   # ==========================
   #   最終ステータスのみ反映
   # ==========================
-  tag = dry_run ? "DRY" : "SYNC"
-
   updates.each do |issue_id, info|
     score = info[:score]
     next if score.nil? || score < 0
@@ -522,25 +109,24 @@ def run_sync(dry_run:)
     will_change = issue && issue.status_id != new_status_id
 
     # --- DRY / SYNC 共通で必ず final ログを出す ---
-    if dry_run
-      puts "[freee][#{tag} final] ##{issue_id} (current=#{current_name}) → #{next_status}"
-      next
-    end
-
-    # SYNC のときもログは必ず出す
-    puts "[freee][#{tag} final] ##{issue_id} (current=#{current_name}) → #{next_status}"
+    puts "#{log_prefix(tag, 'FINAL')} ##{issue_id} current=#{current_name} next=#{next_status}"
+    next if dry_run
 
     # 実際の更新は変化があるときだけ
     next unless will_change
 
     template = info[:template]
     vars     = info[:vars] || {}
-    message  = apply_template(template, vars)
+    message  = FreeeIssueSupport.apply_template(template, vars)
 
-    issue.init_journal(freee_update_user, message)
+    issue.init_journal(FreeeIssueSupport.freee_update_user, message)
     issue.status_id = new_status_id
     issue.save!
   end
+end
+
+def log_prefix(tag, action)
+  "[freee][#{tag}][#{action}]"
 end
 
 # =====================================================================
