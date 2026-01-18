@@ -9,9 +9,9 @@ Redmine のチケット番号（Issue ID）と、 freee請求書 の
 
 のいずれかに含まれる **[#1234]** を Redmine Issue ID として扱います
 
-- 見積書：送付済み / 未送付
-- 請求書：送付済み / 未送付 / 入金済み / 入金待ち
-- 納品書：送付済み / 未送付 / 入金済み / 入金待ち
+- 見積書：送付済み / 未送付 / 取消済み
+- 請求書：送付済み / 未送付 / 入金済み / 入金待ち / 取消済み
+- 納品書：送付済み / 未送付 / 入金済み / 入金待ち / 取消済み
 
 などの freee請求書 イベントに応じて Redmine の Issue ステータスを自動更新します
 
@@ -130,18 +130,21 @@ GET /iv/delivery_slips?company_id=XXX
 ## ◆ 見積書
 - 送付済み (sent)
 - 未送付 (unsent)
+- 取消済み (canceled)
 
 ## ◆ 請求書
 - 送付済み (sent)
 - 未送付 (unsent)
 - 入金済み (settled)
 - 入金待ち (unsettled)
+- 取消済み (canceled)
 
 ## ◆ 納品書
 - 送付済み (sent)
 - 未送付 (unsent)
 - 入金済み (settled)
 - 入金待ち (unsettled)
+- 取消済み (canceled)
 
 各項目で以下を設定できます：
 

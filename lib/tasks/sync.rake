@@ -58,32 +58,38 @@ def run_sync(dry_run:)
   src_delivery_slip    = plugin['ticket_source_delivery']   || 'subject'
 
   # === 見積ステータス / テンプレート ===
-  quotation_sent_id     = plugin['quotation_sent_status'].to_i
-  quotation_unsent_id   = plugin['quotation_unsent_status'].to_i
-  tpl_quotation_sent    = plugin['quotation_sent_comment']
-  tpl_quotation_unsent  = plugin['quotation_unsent_comment']
+  quotation_sent_id      = plugin['quotation_sent_status'].to_i
+  quotation_unsent_id    = plugin['quotation_unsent_status'].to_i
+  quotation_canceled_id  = plugin['quotation_canceled_status'].to_i
+  tpl_quotation_sent     = plugin['quotation_sent_comment']
+  tpl_quotation_unsent   = plugin['quotation_unsent_comment']
+  tpl_quotation_canceled = plugin['quotation_canceled_comment']
 
   # === 請求書ステータス / テンプレート ===
-  invoice_sent_id   = plugin['invoice_sent_status'].to_i
-  invoice_unsent_id = plugin['invoice_unsent_status'].to_i
-  invoice_paid_id   = plugin['invoice_paid_status'].to_i
-  invoice_unpaid_id = plugin['invoice_unpaid_status'].to_i
+  invoice_sent_id      = plugin['invoice_sent_status'].to_i
+  invoice_unsent_id    = plugin['invoice_unsent_status'].to_i
+  invoice_paid_id      = plugin['invoice_paid_status'].to_i
+  invoice_unpaid_id    = plugin['invoice_unpaid_status'].to_i
+  invoice_canceled_id  = plugin['invoice_canceled_status'].to_i
 
-  tpl_invoice_sent   = plugin['invoice_sent_comment']
-  tpl_invoice_unsent = plugin['invoice_unsent_comment']
-  tpl_invoice_paid   = plugin['invoice_paid_comment']
-  tpl_invoice_unpaid = plugin['invoice_unpaid_comment']
+  tpl_invoice_sent     = plugin['invoice_sent_comment']
+  tpl_invoice_unsent   = plugin['invoice_unsent_comment']
+  tpl_invoice_paid     = plugin['invoice_paid_comment']
+  tpl_invoice_unpaid   = plugin['invoice_unpaid_comment']
+  tpl_invoice_canceled = plugin['invoice_canceled_comment']
 
   # === 納品書ステータス / テンプレート ===
-  delivery_slip_sent_id   = plugin['delivery_slip_sent_status'].to_i
-  delivery_slip_unsent_id = plugin['delivery_slip_unsent_status'].to_i
-  delivery_slip_paid_id   = plugin['delivery_slip_paid_status'].to_i
-  delivery_slip_unpaid_id = plugin['delivery_slip_unpaid_status'].to_i
+  delivery_slip_sent_id      = plugin['delivery_slip_sent_status'].to_i
+  delivery_slip_unsent_id    = plugin['delivery_slip_unsent_status'].to_i
+  delivery_slip_paid_id      = plugin['delivery_slip_paid_status'].to_i
+  delivery_slip_unpaid_id    = plugin['delivery_slip_unpaid_status'].to_i
+  delivery_slip_canceled_id  = plugin['delivery_slip_canceled_status'].to_i
 
-  tpl_delivery_slip_sent   = plugin['delivery_slip_sent_comment']
-  tpl_delivery_slip_unsent = plugin['delivery_slip_unsent_comment']
-  tpl_delivery_slip_paid   = plugin['delivery_slip_paid_comment']
-  tpl_delivery_slip_unpaid = plugin['delivery_slip_unpaid_comment']
+  tpl_delivery_slip_sent     = plugin['delivery_slip_sent_comment']
+  tpl_delivery_slip_unsent   = plugin['delivery_slip_unsent_comment']
+  tpl_delivery_slip_paid     = plugin['delivery_slip_paid_comment']
+  tpl_delivery_slip_unpaid   = plugin['delivery_slip_unpaid_comment']
+  tpl_delivery_slip_canceled = plugin['delivery_slip_canceled_comment']
 
   # === 設定値（100,200,300,...,unlimited） ===
   raw_total = plugin['max_fetch_total']
@@ -131,18 +137,13 @@ def run_sync(dry_run:)
         issue = Issue.find_by(id: issue_id)
         next unless issue
 
-        if quotation["cancel_status"] == "canceled"
-          puts dry_run ?
-            "[freee][DRY][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)" :
-            "[freee][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)"
-          next
-        end
-
         amount_fmt    = ActiveSupport::NumberHelper.number_to_delimited(amount)
         quotation_url = "https://invoice.secure.freee.co.jp/reports/quotations/#{quotation_id}"
 
         new_status_id =
-          if mail == "sent"
+          if quotation["cancel_status"] == "canceled"
+            quotation_canceled_id
+          elsif mail == "sent"
             quotation_sent_id
           elsif mail == "unsent"
             quotation_unsent_id
@@ -178,10 +179,14 @@ def run_sync(dry_run:)
 
         # --- コメントテンプレートと埋め込み変数 ---
         template =
-          case mail
-          when "sent"   then tpl_quotation_sent
-          when "unsent" then tpl_quotation_unsent
-          else ""
+          if quotation["cancel_status"] == "canceled"
+            tpl_quotation_canceled
+          elsif mail == "sent"
+            tpl_quotation_sent
+          elsif mail == "unsent"
+            tpl_quotation_unsent
+          else
+            ""
           end
 
         vars = {
@@ -255,18 +260,13 @@ def run_sync(dry_run:)
         issue = Issue.find_by(id: issue_id)
         next unless issue
 
-        if invoice["cancel_status"] == "canceled"
-          puts dry_run ?
-            "[freee][DRY][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)" :
-            "[freee][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)"
-          next
-        end
-
         amount_fmt  = ActiveSupport::NumberHelper.number_to_delimited(amount)
         invoice_url = "https://invoice.secure.freee.co.jp/reports/invoices/#{invoice_id}"
 
         new_status_id =
-          if payment == "settled"
+          if invoice["cancel_status"] == "canceled"
+            invoice_canceled_id
+          elsif payment == "settled"
             invoice_paid_id
           elsif mail == "sent"
             invoice_sent_id
@@ -306,7 +306,9 @@ def run_sync(dry_run:)
 
         # --- コメントテンプレートと埋め込み変数 ---
         template =
-          if payment == "settled"
+          if invoice["cancel_status"] == "canceled"
+            tpl_invoice_canceled
+          elsif payment == "settled"
             tpl_invoice_paid
           elsif mail == "sent"
             tpl_invoice_sent
@@ -389,18 +391,13 @@ def run_sync(dry_run:)
         issue    = Issue.find_by(id: issue_id)
         next unless issue
 
-        if delivery_slip["cancel_status"] == "canceled"
-          puts dry_run ?
-            "[freee][DRY][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)" :
-            "[freee][IGNORE] ##{issue_id} cancel_status=canceled (取り消し済み)"
-          next
-        end
-
         amount_fmt        = ActiveSupport::NumberHelper.number_to_delimited(amount)
         delivery_slip_url = "https://invoice.secure.freee.co.jp/reports/delivery_slips/#{delivery_slip_id}"
 
         new_status_id =
-          if payment == "settled"
+          if delivery_slip["cancel_status"] == "canceled"
+            delivery_slip_canceled_id
+          elsif payment == "settled"
             delivery_slip_paid_id
           elsif mail == "sent"
             delivery_slip_sent_id
@@ -440,7 +437,9 @@ def run_sync(dry_run:)
 
         # --- コメントテンプレートと埋め込み変数 ---
         template =
-          if payment == "settled"
+          if delivery_slip["cancel_status"] == "canceled"
+            tpl_delivery_slip_canceled
+          elsif payment == "settled"
             tpl_delivery_slip_paid
           elsif mail == "sent"
             tpl_delivery_slip_sent

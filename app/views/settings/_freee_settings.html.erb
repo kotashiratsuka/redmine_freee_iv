@@ -179,6 +179,18 @@
     <label id="quotation_unsent_label">見積書（未送付）のコメントテンプレート：</label><br>
     <textarea id="quotation_unsent_comment" name="settings[quotation_unsent_comment]" rows="3" style="width: 98%;"><%= settings['quotation_unsent_comment'] %></textarea>
   </p>
+
+  <p>
+    見積書が <strong>取消済み (canceled)</strong> の時のステータス：
+    <%= select_tag 'settings[quotation_canceled_status]',
+          options_for_select(
+            [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+            selected: settings['quotation_canceled_status'].to_i
+          )
+    %>
+    <label id="quotation_canceled_label">見積書（取消済み）のコメントテンプレート：</label><br>
+    <textarea id="quotation_canceled_comment" name="settings[quotation_canceled_comment]" rows="3" style="width: 98%;"><%= settings['quotation_canceled_comment'] %></textarea>
+  </p>
 </div>
 
 <hr>
@@ -254,6 +266,18 @@
   <label id="invoice_unpaid_label">請求書（入金待ち）のコメントテンプレート：</label><br>
   <textarea id="invoice_unpaid_comment" name="settingss[invoice_unpaid_comment]" rows="3" style="width: 98%;"><%= settings['invoice_unpaid_comment'] %></textarea>
 </p>
+
+<p>
+  請求書が <strong>取消済み (canceled)</strong> の時のステータス：
+  <%= select_tag 'settings[invoice_canceled_status]',
+        options_for_select(
+          [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+          selected: settings['invoice_canceled_status'].to_i
+        )
+  %>
+  <label id="invoice_canceled_label">請求書（取消済み）のコメントテンプレート：</label><br>
+  <textarea id="invoice_canceled_comment" name="settings[invoice_canceled_comment]" rows="3" style="width: 98%;"><%= settings['invoice_canceled_comment'] %></textarea>
+</p>
 </div>
 
 <hr>
@@ -328,6 +352,18 @@
     %>
     <label id="delivery_slip_unpaid_label">納品書（入金待ち）のコメントテンプレート：</label><br>
     <textarea id="delivery_slip_unpaid_comment" name="settings[delivery_slip_unpaid_comment]" rows="3" style="width: 98%;"><%= settings['delivery_slip_unpaid_comment'] %></textarea>
+  </p>
+
+  <p>
+    納品書が <strong>取消済み (canceled)</strong> の時のステータス：
+    <%= select_tag 'settings[delivery_slip_canceled_status]',
+          options_for_select(
+            [["変更しない", 0]] + IssueStatus.all.map { |s| [s.name, s.id] },
+            selected: settings['delivery_slip_canceled_status'].to_i
+          )
+    %>
+    <label id="delivery_slip_canceled_label">納品書（取消済み）のコメントテンプレート：</label><br>
+    <textarea id="delivery_slip_canceled_comment" name="settings[delivery_slip_canceled_comment]" rows="3" style="width: 98%;"><%= settings['delivery_slip_canceled_comment'] %></textarea>
   </p>
 </div>
 
@@ -454,14 +490,17 @@ $(function() {
   const map = {
     "settings[quotation_sent_status]":     ["#quotation_sent_label", "#quotation_sent_comment"],
     "settings[quotation_unsent_status]":   ["#quotation_unsent_label", "#quotation_unsent_comment"],
+    "settings[quotation_canceled_status]": ["#quotation_canceled_label", "#quotation_canceled_comment"],
     "settings[invoice_sent_status]":       ["#invoice_sent_label", "#invoice_sent_comment"],
     "settings[invoice_unsent_status]":     ["#invoice_unsent_label", "#invoice_unsent_comment"],
     "settings[invoice_paid_status]":       ["#invoice_paid_label", "#invoice_paid_comment"],
     "settings[invoice_unpaid_status]":     ["#invoice_unpaid_label", "#invoice_unpaid_comment"],
+    "settings[invoice_canceled_status]":   ["#invoice_canceled_label", "#invoice_canceled_comment"],
     "settings[delivery_slip_sent_status]": ["#delivery_slip_sent_label", "#delivery_slip_sent_comment"],
     "settings[delivery_slip_unsent_status]":["#delivery_slip_unsent_label", "#delivery_slip_unsent_comment"],
     "settings[delivery_slip_paid_status]": ["#delivery_slip_paid_label", "#delivery_slip_paid_comment"],
-    "settings[delivery_slip_unpaid_status]":["#delivery_slip_unpaid_label", "#delivery_slip_unpaid_comment"]
+    "settings[delivery_slip_unpaid_status]":["#delivery_slip_unpaid_label", "#delivery_slip_unpaid_comment"],
+    "settings[delivery_slip_canceled_status]":["#delivery_slip_canceled_label", "#delivery_slip_canceled_comment"]
   };
 
   function syncVisibility(selectEl) {
