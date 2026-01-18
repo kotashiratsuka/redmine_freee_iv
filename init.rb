@@ -1,3 +1,26 @@
+require_relative "app/services/document_type_definitions"
+
+default_settings = {
+  "client_id" => "",
+  "client_secret" => "",
+  "user_id" => "",
+  "apply_final_only" => "1",
+  "ignored_status_ids" => [],
+  "max_fetch_total" => "100"
+}
+
+DocumentTypeDefinitions.document_types.each do |_type, defn|
+  default_settings[defn[:ticket_source_key]] = "subject"
+  default_settings[defn[:sync_key]] = "0"
+
+  defn[:statuses].each do |status|
+    prefix = defn[:settings_prefix]
+    default_settings["#{prefix}_#{status}_status"] = "0"
+    default_settings["#{prefix}_#{status}_comment"] =
+      defn[:default_templates].fetch(status)
+  end
+end
+
 Redmine::Plugin.register :redmine_freee_iv do
   name        'Redmine freee Iv Plugin'
   author      'Kota Shiratsuka'
@@ -7,54 +30,5 @@ Redmine::Plugin.register :redmine_freee_iv do
   author_url  'https://github.com/kotashiratsuka/'
   requires_redmine version_or_higher: '6.0.0'
 
-  settings default: {
-  'client_id' => '',
-  'client_secret' => '',
-  'user_id' => '',
-
-  # --- チケット番号抽出元（書類ごと） ---
-  'ticket_source_quotation'  => 'subject',
-  'ticket_source_invoice'    => 'subject',
-  'ticket_source_delivery'   => 'subject',
-
-  # --- 同期 ON/OFF ---
-  'sync_quotations' => '0',
-  'sync_invoices' => '0',
-  'sync_delivery_slips' => '0',
-
-  # --- ステータス設定 ---
-  'quotation_sent_status' => '0',
-  'quotation_unsent_status' => '0',
-  'quotation_canceled_status' => '0',
-  'invoice_sent_status' => '0',
-  'invoice_unsent_status' => '0',
-  'invoice_paid_status' => '0',
-  'invoice_unpaid_status' => '0',
-  'invoice_canceled_status' => '0',
-  'delivery_slip_sent_status' => '0',
-  'delivery_slip_unsent_status' => '0',
-  'delivery_slip_paid_status' => '0',
-  'delivery_slip_unpaid_status' => '0',
-  'delivery_slip_canceled_status' => '0',
-
-  # --- コメントテンプレ ---
-  'quotation_unsent_comment' => "🧾 freee に {amount} 円の見積書が作成されました\nURL: {url}",
-  'quotation_sent_comment' => "📤 freee で {amount} 円の見積書が送信されました\nURL: {url}",
-  'quotation_canceled_comment' => "❌ freee で見積書が取り消されました\nURL: {url}",
-  'invoice_unsent_comment' => "🧾 freee に {amount} 円の請求書が作成されました\nURL: {url}",
-  'invoice_sent_comment' => "📤 freee で {amount} 円の請求書が送信されました\nURL: {url}",
-  'invoice_unpaid_comment' => "💰 freee で {amount} 円の入金待ちです\nURL: {url}",
-  'invoice_paid_comment' => "💰 freee で {amount} 円の入金が確認されました\nURL: {url}",
-  'invoice_canceled_comment' => "❌ freee で請求書が取り消されました\nURL: {url}",
-  'delivery_slip_unsent_comment' => " 📦 freee に {amount} 円の納品書が作成されました\nURL: {url}",
-  'delivery_slip_sent_comment' => "📤 freee で {amount} 円の納品書が送信されました\nURL: {url}",
-  'delivery_slip_unpaid_comment' => "💰 freee で {amount} 円の入金待ちです\nURL: {url}",
-  'delivery_slip_paid_comment' => "💰 freee で {amount} 円の入金が確認されました\nURL: {url}",
-  'delivery_slip_canceled_comment' => "❌ freee で納品書が取り消されました\nURL: {url}",
-
-  # --- 最大取得件数 ---
-  'apply_final_only' => '1',
-  'ignored_status_ids' => [],
-  'max_fetch_total' => '100'
-  }, partial: 'settings/freee_settings'
+  settings default: default_settings, partial: "settings/freee_settings"
 end
