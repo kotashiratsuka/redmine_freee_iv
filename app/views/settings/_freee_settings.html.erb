@@ -54,6 +54,21 @@
       </p>
     <% end %>
 
+    <p style="margin-top: 1em;">
+      <strong>既存の認証情報：</strong>
+    </p>
+
+    <% creds.each do |cred| %>
+      <p style="margin-left: 1em;">
+        <strong>事業所 ID: <%= cred.company_id %></strong>：
+        <span style="color: orange;">認証エラー</span>
+        <%= link_to "認証解除",
+              "/redmine_freee_iv/auth/revoke?company_id=#{cred.company_id}",
+              method: :delete,
+              data: { confirm: "この事業所の認証を解除しますか？" } %>
+      </p>
+    <% end %>
+
   <% elsif api_status == :error %>
 
     <p><strong>freee API 接続テスト：</strong>
@@ -62,6 +77,21 @@
 
     <% if settings['client_id'].present? && settings['client_secret'].present? %>
       <p><%= link_to "▶ 再認証する", "/redmine_freee_iv/auth/start" %></p>
+    <% end %>
+
+    <p style="margin-top: 1em;">
+      <strong>既存の認証情報：</strong>
+    </p>
+
+    <% creds.each do |cred| %>
+      <p style="margin-left: 1em;">
+        <strong>事業所 ID: <%= cred.company_id %></strong>：
+        <span style="color: orange;">認証エラー</span>
+        <%= link_to "認証解除",
+              "/redmine_freee_iv/auth/revoke?company_id=#{cred.company_id}",
+              method: :delete,
+              data: { confirm: "この事業所の認証を解除しますか？" } %>
+      </p>
     <% end %>
 
   <% else %>
